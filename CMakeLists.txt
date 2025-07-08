@@ -4,5 +4,10 @@ project(poc-gpu-likelihood-calculations)
 set(CMAKE_CXX_STANDARD 17)
 
 add_executable(gpulcal main.cpp
-        helper.cpp
-        helper.h)
+        helper/Matrix.cpp
+        helper/Matrix.h
+        helper/MatrixOp.h
+        helper/MatrixOpCPU.cpp
+        helper/MatrixOpCPU.h
+        helper/MatrixOpFactory.cpp
+        helper/MatrixOpFactory.h)
