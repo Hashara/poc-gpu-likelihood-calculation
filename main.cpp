@@ -71,6 +71,8 @@ int main(int argc, char *argv[]) {
         auto t1 = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double,std::milli> ms = t1 - t0;
 
+        // output timing
+        std::cout << "Time taken: " << ms.count() << " ms\n";
 
 
     }
