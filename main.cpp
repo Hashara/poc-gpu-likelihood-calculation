@@ -5,7 +5,7 @@
 
 struct Params {
     int a_row, a_col, b_row, b_col;
-    int seedA = 42, seedB = 52;
+    int seedA = 42, seedB = 52, seedC = 62, seedD = 72;
 };
 
 Params parseArgs(int argc, char *argv[]) {
@@ -44,9 +44,14 @@ int main(int argc, char *argv[]) {
         auto params = parseArgs(argc, argv);
 
         Matrix A(params.a_row, params.a_col);
+        Matrix C(params.a_row, params.a_col); // create C with A dimensions
         Matrix B(params.b_row, params.b_col);
+        Matrix D(params.b_row, params.b_col); // create D with B dimensions
+
         A.fillRandom(params.seedA);
         B.fillRandom(params.seedB);
+        C.fillRandom(params.seedC);
+        D.fillRandom(params.seedD);
 
 #ifdef USE_OPENACC
         auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
@@ -57,23 +62,16 @@ int main(int argc, char *argv[]) {
         // start timer
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        Matrix C = op->multiply(A, B);
+        Matrix AB = op->multiply(A, B);
+        Matrix CD = op->multiply(C, D);
+        Matrix H = op->hadamard(AB, CD);
 //        Matrix H = op->hadamard(A, B);
 
         // stop timer
         auto t1 = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double,std::milli> ms = t1 - t0;
 
-        std::cout << "Matrix A:\n";
-        A.print();
-        std::cout << "Matrix B:\n";
-        B.print();
-        std::cout << "Matrix C (A * B):\n";
-        C.print();
-//        std::cout << "Matrix H (Hadamard product of A and B):\n";
-//        H.print();
 
-        std::cout << "multiply() took " << ms.count() << " ms\n\n";
 
     }
     catch (const std::exception &ex) {
