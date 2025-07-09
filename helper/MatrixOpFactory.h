@@ -6,6 +6,7 @@
 #define POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPFACTORY_H
 
 #include "MatrixOp.h"
+#include <memory>
 
 enum class MatrixOpType {
     CPU,
@@ -17,7 +18,6 @@ enum class MatrixOpType {
 class MatrixOpFactory {
 public:
     static std::unique_ptr<MatrixOp> create(MatrixOpType type);
-
 };
 
 

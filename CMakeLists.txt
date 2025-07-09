@@ -3,7 +3,16 @@ project(poc-gpu-likelihood-calculations)
 
 set(CMAKE_CXX_STANDARD 17)
 
-
+set(SRC
+        main.cpp
+        helper/Matrix.cpp
+        helper/Matrix.h
+        helper/MatrixOp.h
+        helper/MatrixOpCPU.cpp
+        helper/MatrixOpCPU.h
+        helper/MatrixOpFactory.cpp
+        helper/MatrixOpFactory.h
+)
 ######################################################
 # setup compilers
 ######################################################
@@ -25,20 +34,19 @@ if (USE_OPENACC STREQUAL "ON")
     message("OpenACC       : Yes")
     if (GCC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenacc")
+        list(APPEND SRC
+                helper/MatrixOpOpenACC.cpp
+                helper/MatrixOpOpenACC.h
+        )
     elseif (NVHPC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc")
+        list(APPEND SRC
+                helper/MatrixOpOpenACC.cpp
+                helper/MatrixOpOpenACC.h
+        )
     endif()
 else()
     message("OpenACC       : NONE")
 endif()
 
-add_executable(gpulcal main.cpp
-        helper/Matrix.cpp
-        helper/Matrix.h
-        helper/MatrixOp.h
-        helper/MatrixOpCPU.cpp
-        helper/MatrixOpCPU.h
-        helper/MatrixOpFactory.cpp
-        helper/MatrixOpFactory.h
-        helper/MatrixOpOpenACC.cpp
-        helper/MatrixOpOpenACC.h)
+add_executable(gpulcal ${SRC})

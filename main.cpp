@@ -9,7 +9,11 @@ int main() {
     Matrix B(3, 3);
     B.fillRandom(52);  // Same values every run
 
+#ifdef USE_OPENACC
+    auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
+#else
     auto op = MatrixOpFactory::create(MatrixOpType::CPU);
+#endif
     Matrix C = op->multiply(A, B);
     Matrix H = op->hadamard(A, B);
 
