@@ -1,6 +1,7 @@
 #include <iostream>
 #include "helper/Matrix.h"
 #include "helper/MatrixOpFactory.h"
+#include <chrono>
 
 struct Params {
     int a_row, a_col, b_row, b_col;
@@ -53,8 +54,15 @@ int main(int argc, char *argv[]) {
         auto op = MatrixOpFactory::create(MatrixOpType::CPU);
 #endif
 
+        // start timer
+        auto t0 = std::chrono::high_resolution_clock::now();
+
         Matrix C = op->multiply(A, B);
-        Matrix H = op->hadamard(A, B);
+//        Matrix H = op->hadamard(A, B);
+
+        // stop timer
+        auto t1 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double,std::milli> ms = t1 - t0;
 
         std::cout << "Matrix A:\n";
         A.print();
@@ -62,8 +70,11 @@ int main(int argc, char *argv[]) {
         B.print();
         std::cout << "Matrix C (A * B):\n";
         C.print();
-        std::cout << "Matrix H (Hadamard product of A and B):\n";
-        H.print();
+//        std::cout << "Matrix H (Hadamard product of A and B):\n";
+//        H.print();
+
+        std::cout << "multiply() took " << ms.count() << " ms\n\n";
+
     }
     catch (const std::exception &ex) {
         std::cerr << "Error: " << ex.what() << "\n";
