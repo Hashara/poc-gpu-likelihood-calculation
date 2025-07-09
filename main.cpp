@@ -2,28 +2,74 @@
 #include "helper/Matrix.h"
 #include "helper/MatrixOpFactory.h"
 
-int main() {
-    Matrix A(3, 3);
-    A.fillRandom(42);  // Same values every run
+struct Params {
+    int a_row, a_col, b_row, b_col;
+    int seedA = 42, seedB = 52;
+};
 
-    Matrix B(3, 3);
-    B.fillRandom(52);  // Same values every run
+Params parseArgs(int argc, char *argv[]) {
+    Params params;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--a_row" && i + 1 < argc) params.a_row = std::stoi(argv[++i]);
+        else if (arg == "--a_col" && i + 1 < argc) params.a_col = std::stoi(argv[++i]);
+        else if (arg == "--b_row" && i + 1 < argc) params.b_row = std::stoi(argv[++i]);
+        else if (arg == "--b_col" && i + 1 < argc) params.b_col = std::stoi(argv[++i]);
+        else if (arg == "--seedA" && i + 1 < argc) params.seedA = std::stoi(argv[++i]);
+        else if (arg == "--seedB" && i + 1 < argc) params.seedB = std::stoi(argv[++i]);
+        else {
+            throw std::invalid_argument("Unknown or malformed flag: " + arg);
+        }
+    }
+    if (params.a_row < 1 || params.a_col < 1 || params.b_row < 1 || params.b_col < 1)
+        throw std::invalid_argument("Must specify positive dimensions for both A and B.");
+    if (params.a_col != params.b_row)
+        throw std::invalid_argument(
+                "A’s columns (" + std::to_string(params.a_col) +
+                ") must equal B’s rows (" + std::to_string(params.b_row) + ").");
+    return params;
+}
+
+void printUsage(const char *progName) {
+    std::cerr << "Usage: " << progName
+              << " --a_row N --a_col M --b_row P --b_col Q"
+                 " [--seedA S] [--seedB T]\n"
+                 "  Requires M == P.\n";
+}
+
+
+int main(int argc, char *argv[]) {
+    try {
+        auto params = parseArgs(argc, argv);
+
+        Matrix A(params.a_row, params.a_col);
+        Matrix B(params.b_row, params.b_col);
+        A.fillRandom(params.seedA);
+        B.fillRandom(params.seedB);
 
 #ifdef USE_OPENACC
-    auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
+        auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
 #else
-    auto op = MatrixOpFactory::create(MatrixOpType::CPU);
+        auto op = MatrixOpFactory::create(MatrixOpType::CPU);
 #endif
-    Matrix C = op->multiply(A, B);
-    Matrix H = op->hadamard(A, B);
 
-    std::cout << "Matrix A:\n";
-    A.print();
-    std::cout << "Matrix B:\n";
-    B.print();
-    std::cout << "Matrix C (A * B):\n";
-    C.print();
-    std::cout << "Matrix H (Hadamard product of A and B):\n";
-    H.print();
+        Matrix C = op->multiply(A, B);
+        Matrix H = op->hadamard(A, B);
 
+        std::cout << "Matrix A:\n";
+        A.print();
+        std::cout << "Matrix B:\n";
+        B.print();
+        std::cout << "Matrix C (A * B):\n";
+        C.print();
+        std::cout << "Matrix H (Hadamard product of A and B):\n";
+        H.print();
+    }
+    catch (const std::exception &ex) {
+        std::cerr << "Error: " << ex.what() << "\n";
+        printUsage(argv[0]);
+        return 1;
+    }
+
+    return 0;
 }
