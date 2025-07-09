@@ -3,6 +3,10 @@ project(poc-gpu-likelihood-calculations)
 
 set(CMAKE_CXX_STANDARD 17)
 
+option(USE_OPENACC "Enable OpenACC support" OFF)
+option(USE_CUDA     "Enable CUDA support" OFF)
+option(USE_OPENMP_GPU "Enable OpenMP GPU support" OFF)
+
 set(SRC
         main.cpp
         helper/Matrix.cpp
@@ -12,6 +16,7 @@ set(SRC
         helper/MatrixOpCPU.h
         helper/MatrixOpFactory.cpp
         helper/MatrixOpFactory.h
+        helper/MatrixUtils.h
 )
 ######################################################
 # setup compilers
@@ -50,3 +55,70 @@ else()
 endif()
 
 add_executable(gpulcal ${SRC})
+
+
+##################################################################
+# Include the test library
+##################################################################
+option(USE_GTEST "Use Google Test library (gtest)" OFF)
+if (USE_GTEST)
+    message("Use Google Test library: ON")
+    add_definitions(-DUSE_GTEST)
+    if (NOT GTEST_ROOT)
+        find_package(GTest REQUIRED)
+        if (GTEST_FOUND)
+            include_directories(${GTEST_INCLUDE_DIRS})
+            link_directories(${GTEST_LIBRARY_DIRS})
+        else()
+            message(FATAL_ERROR "Google Test library not found. Either install it or rerun cmake with -DGTEST_ROOT=<installed_gtest_dir>")
+        endif()
+    else()
+        include_directories(${GTEST_ROOT}/include)
+        link_directories(${GTEST_ROOT}/lib)
+    endif()
+    if (GTEST_FOUND)
+        message("Google Test library found: ${GTEST_LIBRARIES}")
+        add_definitions(-DGTEST_FOUND)
+        # --- GoogleTest ----------------------------------------------------------------
+        include(FetchContent)
+
+        # Always good to pin an exact tag / commit for reproducibility
+        FetchContent_Declare(
+                googletest
+                URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+        )
+        FetchContent_MakeAvailable(googletest)   # defines gtest & gtest_main targets
+
+
+        # --- Unit-test target ----------------------------------------------------------
+        enable_testing()
+
+        set(TEST_SRC
+                helper/Matrix.cpp
+                helper/MatrixOpCPU.cpp
+                helper/MatrixOpFactory.cpp
+        )
+
+        add_library(matrixlib STATIC ${TEST_SRC})
+        target_include_directories(matrixlib PUBLIC ${PROJECT_SOURCE_DIR}/helper)
+
+        # Link it with test executable
+        add_executable(test_matrix test/helper/testMatrix.cpp)
+
+        target_link_libraries(test_matrix
+                PRIVATE
+                matrixlib
+                gtest
+                gtest_main
+        )
+
+        gtest_discover_tests(test_matrix)
+
+        add_test(NAME RunAllTests COMMAND test_matrix)
+
+    else()
+        message(FATAL_ERROR "Google Test library not found. Either install it or rerun cmake with -DGTEST_ROOT=<installed_gtest_dir>")
+    endif()
+
+
+endif ()
