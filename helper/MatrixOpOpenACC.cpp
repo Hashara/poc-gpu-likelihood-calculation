@@ -38,7 +38,7 @@ Matrix MatrixOpOpenACC::multiply(const Matrix &A, const Matrix &B) {
 
 Matrix MatrixOpOpenACC::hadamard(const Matrix &A, const Matrix &B) {
     size_t M = A.rows(), N = A.cols();
-    size_t Asz = M * N, Bsz = M * N;
+    size_t Asz = M * N;
 
     if (M != B.rows() || N != B.cols()) {
         throw std::invalid_argument("Matrix dimensions do not match for Hadamard product.");
@@ -50,12 +50,12 @@ Matrix MatrixOpOpenACC::hadamard(const Matrix &A, const Matrix &B) {
     double *c = C.data();
 
 
-#pragma acc data copyin(a[0:Asz], b[0:Bsz]) copyout(c[0:Csz])
+    #pragma acc data copyin(a[0:Asz], b[0:Asz]) copyout(c[0:Asz])
     {
         #pragma acc parallel loop collapse(2) gang vector
-        for (size_t i = 0; i < A.rows(); ++i) {
-            for (size_t j = 0; j < A.cols(); ++j) {
-                C.at(i, j) = A.at(i, j) * B.at(i, j);
+        for (size_t i = 0; i < M; ++i) {
+            for (size_t j = 0; j < N; ++j) {
+                c[j * M + i] = a[j * M + i] * b[j * M + i];  // Column-major layout
             }
         }
     }
