@@ -4,6 +4,7 @@
 #include "alignment/AlignmentIO.h"
 #include "tree/TreeReader.h"
 #include "tree/TreeUtils.h"
+#include "model/ModelJC.h"
 #include <chrono>
 #include <string>
 
@@ -57,6 +58,17 @@ int main(int argc, char *argv[]) {
         Tree tree = reader.readFromFile(params.tree_file);
         std::cout << "Tree loaded successfully.\n";
         printTree(tree.root);
+        ModelJC jc;
+        double t = .1;  // example branch length
+
+        auto P = jc.getTransitionMatrix(t);
+        std::cout << "Transition matrix P(t=" << t << "):\n";
+        for (const auto& row : P) {
+            for (double p : row)
+                std::cout << p << " ";
+            std::cout << "\n";
+        }
+
 
 
         // commenting out the matrix operations for now

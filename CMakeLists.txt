@@ -25,6 +25,7 @@ set(SRC
         alignment/Pattern.h
         alignment/alignmentIO.cpp
         alignment/alignmentIO.h
+
         tree/Node.cpp
         tree/Node.h
         tree/Tree.cpp
@@ -32,6 +33,13 @@ set(SRC
         tree/TreeReader.cpp
         tree/TreeReader.h
         tree/TreeUtils.h
+
+        model/Model.cpp
+        model/Model.h
+        model/ModelJC.cpp
+        model/ModelJC.h
+        tree/LikelihoodCalculator.cpp
+        tree/LikelihoodCalculator.h
 )
 ######################################################
 # setup compilers
