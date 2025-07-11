@@ -1,11 +1,14 @@
 #include <iostream>
 #include "helper/Matrix.h"
 #include "helper/MatrixOpFactory.h"
+#include "alignment/AlignmentIO.h"
 #include <chrono>
+#include <string>
 
 struct Params {
     int a_row, a_col, b_row, b_col;
     int seedA = 42, seedB = 52, seedC = 62, seedD = 72;
+    std::string alignment_file = "../example/alignment.phy";
 };
 
 Params parseArgs(int argc, char *argv[]) {
@@ -43,7 +46,11 @@ int main(int argc, char *argv[]) {
     try {
         auto params = parseArgs(argc, argv);
 
-        Matrix A(params.a_row, params.a_col);
+        Alignment aln;
+        readPhylipFile(params.alignment_file, aln);
+        aln.printAlignment();
+        // commenting out the matrix operations for now
+       /* Matrix A(params.a_row, params.a_col);
         Matrix C(params.a_row, params.a_col); // create C with A dimensions
         Matrix B(params.b_row, params.b_col);
         Matrix D(params.b_row, params.b_col); // create D with B dimensions
@@ -74,7 +81,7 @@ int main(int argc, char *argv[]) {
         // output timing
         std::cout << "Time taken: " << ms.count() << " ms\n";
 
-
+*/
     }
     catch (const std::exception &ex) {
         std::cerr << "Error: " << ex.what() << "\n";
