@@ -25,6 +25,13 @@ set(SRC
         alignment/Pattern.h
         alignment/alignmentIO.cpp
         alignment/alignmentIO.h
+        tree/Node.cpp
+        tree/Node.h
+        tree/Tree.cpp
+        tree/Tree.h
+        tree/TreeReader.cpp
+        tree/TreeReader.h
+        tree/TreeUtils.h
 )
 ######################################################
 # setup compilers

@@ -2,6 +2,8 @@
 #include "helper/Matrix.h"
 #include "helper/MatrixOpFactory.h"
 #include "alignment/AlignmentIO.h"
+#include "tree/TreeReader.h"
+#include "tree/TreeUtils.h"
 #include <chrono>
 #include <string>
 
@@ -9,6 +11,7 @@ struct Params {
     int a_row, a_col, b_row, b_col;
     int seedA = 42, seedB = 52, seedC = 62, seedD = 72;
     std::string alignment_file = "../example/alignment.phy";
+    std::string tree_file = "../example/tree.nwk";
 };
 
 Params parseArgs(int argc, char *argv[]) {
@@ -49,6 +52,13 @@ int main(int argc, char *argv[]) {
         Alignment aln;
         readPhylipFile(params.alignment_file, aln);
         aln.printAlignment();
+
+        TreeReader reader;
+        Tree tree = reader.readFromFile(params.tree_file);
+        std::cout << "Tree loaded successfully.\n";
+        printTree(tree.root);
+
+
         // commenting out the matrix operations for now
        /* Matrix A(params.a_row, params.a_col);
         Matrix C(params.a_row, params.a_col); // create C with A dimensions
