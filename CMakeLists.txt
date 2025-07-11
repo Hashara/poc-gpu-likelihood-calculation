@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 option(USE_OPENACC "Enable OpenACC support" OFF)
 option(USE_CUDA     "Enable CUDA support" OFF)
+option(USE_CUBLAS   "Enable CUBLAS support" OFF)
 option(USE_OPENMP_GPU "Enable OpenMP GPU support" OFF)
 
 set(SRC
@@ -17,6 +18,13 @@ set(SRC
         helper/MatrixOpFactory.cpp
         helper/MatrixOpFactory.h
         helper/MatrixUtils.h
+
+        alignment/Alignment.cpp
+        alignment/Alignment.h
+        alignment/Pattern.cpp
+        alignment/Pattern.h
+        alignment/alignmentIO.cpp
+        alignment/alignmentIO.h
 )
 ######################################################
 # setup compilers
@@ -54,6 +62,33 @@ else()
     message("OpenACC       : NONE")
 endif()
 
+##################################################################
+# configure CUBLAS
+##################################################################
+
+if (USE_CUBLAS)
+    message("CUBLAS        : Yes")
+    if (NVHPC)
+        find_package(CUDA REQUIRED)
+        if (CUDA_FOUND)
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_CUBLAS")
+            include_directories(${CUDA_INCLUDE_DIRS})
+            link_directories(${CUDA_LIBRARY_DIRS})
+            list(APPEND SRC
+                    helper/MatrixOpCUBLAS.cpp
+                    helper/MatrixOpCUBLAS.h
+            )
+        else()
+            message(FATAL_ERROR "CUDA not found. Either install it or rerun cmake with -DCUDA_ROOT=<installed_cuda_dir>")
+        endif()
+    else()
+        message(FATAL_ERROR "CUBLAS requires CUDA support. Enable CUDA with -DUSE_CUDA=ON")
+    endif()
+else()
+    message("CUBLAS        : NONE")
+endif()
+
+
 add_executable(gpulcal ${SRC})
 
 
@@ -87,6 +122,8 @@ if (USE_GTEST)
                 googletest
                 URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
         )
+        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
         FetchContent_MakeAvailable(googletest)   # defines gtest & gtest_main targets
 
 
