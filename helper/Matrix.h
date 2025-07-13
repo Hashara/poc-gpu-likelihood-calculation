@@ -17,6 +17,7 @@ class Matrix {
 public:
     Matrix(size_t rows, size_t cols);
     ~Matrix();
+    Matrix() : m_rows(0), m_cols(0), m_data(nullptr) {}
 
     Matrix(const Matrix& other);
     Matrix& operator=(const Matrix& other);

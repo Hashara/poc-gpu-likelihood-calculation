@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <string>
+#include "../helper/Matrix.h"
 
 class Model {
 public:
@@ -14,10 +15,15 @@ public:
 
     virtual std::string getName() const = 0;
 
-    // 4x4 substitution rate matrix for DNA
-    virtual std::vector<std::vector<double>> getRateMatrix() const = 0;
+    virtual std::vector<double> getBaseFrequencies() const = 0;
 
-    // Optional: equilibrium frequencies, model parameters
+    // Transition probability matrix P(t) for a given branch length t
+    virtual Matrix getTransitionMatrix(double t) const = 0;
+
+
+    // 4x4 substitution rate matrix for DNA
+    virtual Matrix getRateMatrix() const = 0;
+
 };
 
 

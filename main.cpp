@@ -5,6 +5,7 @@
 #include "tree/TreeReader.h"
 #include "tree/TreeUtils.h"
 #include "model/ModelJC.h"
+#include "tree/LikelihoodCalculator.h"
 #include <chrono>
 #include <string>
 
@@ -58,16 +59,32 @@ int main(int argc, char *argv[]) {
         Tree tree = reader.readFromFile(params.tree_file);
         std::cout << "Tree loaded successfully.\n";
         printTree(tree.root);
+
         ModelJC jc;
         double t = .1;  // example branch length
 
         auto P = jc.getTransitionMatrix(t);
         std::cout << "Transition matrix P(t=" << t << "):\n";
-        for (const auto& row : P) {
-            for (double p : row)
-                std::cout << p << " ";
-            std::cout << "\n";
-        }
+        P.print();
+
+#ifdef USE_OPENACC
+        auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
+#else
+        auto op = MatrixOpFactory::create(MatrixOpType::CPU);
+#endif
+
+        LikelihoodCalculator calculator(&tree, &aln, &jc, op.get());
+        double logLikelihood = calculator.computeLogLikelihood();
+
+        std::cout << "Log-likelihood: " << logLikelihood << std::endl;
+
+//        // Cleanup
+//        delete jc;
+//        delete tree;
+//        delete aln;
+
+
+
 
 
 

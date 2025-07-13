@@ -8,6 +8,7 @@
 
 #include <string>
 #include <vector>
+#include "../helper/Matrix.h"
 
 class Node {
 public:
@@ -15,6 +16,10 @@ public:
     double branchLength = 0.0;
     Node* parent = nullptr;
     std::vector<Node*> children;
+
+    // Likelihood matrix (states x patterns)
+    Matrix partialLikelihood;
+    bool isPartialLikelihoodCalculated = false;
 
     bool isLeaf() const {
         return children.empty();
