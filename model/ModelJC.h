@@ -14,14 +14,14 @@ public:
     std::string getName() const override;
 
     Matrix getRateMatrix() const override;
-    std::vector<double> getBaseFrequencies() const override;
+    Matrix getBaseFrequencies() const override;
 
     // Transition probability matrix P(t)
     Matrix getTransitionMatrix(double t) const override;
 
 private:
     Matrix rateMatrix_;
-    std::vector<double> baseFreq_;
+    Matrix baseFreq_;
 };
 
 

@@ -3,6 +3,7 @@
 //
 
 #include "LikelihoodCalculator.h"
+#define VERBOSE 1
 
 LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model, MatrixOp *matrixOp) {
 
@@ -37,6 +38,11 @@ Matrix LikelihoodCalculator::buildTipLikelihood(const std::string& taxonName) {
         }
     }
 
+#ifdef VERBOSE
+    cout << "Tip likelihood for " << taxonName << ":\n";
+
+    L.print();
+#endif
     return L;
 }
 
@@ -66,6 +72,26 @@ void LikelihoodCalculator::computeInternalLikelihood(Node* node) {
 
     node->partialLikelihood =matrixOp_->hadamard(PL1, PL2);
     node->isPartialLikelihoodCalculated = true;
+
+#ifdef VERBOSE
+    cout << "Internal node " << node->name << ":\n";
+    cout << "Left child (" << left->name << ") partial likelihood:\n";
+    left->partialLikelihood.print();
+    cout << "Right child (" << right->name << ") partial likelihood:\n";
+    right->partialLikelihood.print();
+    cout << "Transition matrix P1 for left child:\n";
+    P1.print();
+    cout << "Transition matrix P2 for right child:\n";
+    P2.print();
+    cout << "Partial likelihood after multiplication with transition matrices:\n";
+    PL1.print();
+    PL2.print();
+    cout << "Hadamard product of left and right child likelihoods:\n";
+    node->partialLikelihood.print();
+
+    cout << "Internal likelihood for node " << node->name << ":\n";
+    node->partialLikelihood.print();
+#endif
 }
 
 
@@ -95,15 +121,12 @@ double LikelihoodCalculator::computeLogLikelihood() {
     int numPatterns = rootL.cols();
 
     double logL = 0.0;
-    double pi = 1.0 / numStates;  // JC model has uniform base frequencies
+
+    Matrix baseFrequencies = model_->getBaseFrequencies();
+    Matrix siteLikelihoods = matrixOp_->multiply(baseFrequencies, rootL);
 
     for (int j = 0; j < numPatterns; ++j) {
-        double siteLikelihood = 0.0;
-
-        // Sum over all states at the root for site j
-        for (int i = 0; i < numStates; ++i) {
-            siteLikelihood += pi * rootL.at(i, j);
-        }
+        double siteLikelihood = siteLikelihoods.at(0, j);  // Assuming siteLikelihoods is a 1-row matrix
 
         // Multiply by the pattern frequency
         int freq = aln_->patterns[j].frequency;

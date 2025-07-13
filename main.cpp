@@ -61,11 +61,7 @@ int main(int argc, char *argv[]) {
         printTree(tree.root);
 
         ModelJC jc;
-        double t = .1;  // example branch length
 
-        auto P = jc.getTransitionMatrix(t);
-        std::cout << "Transition matrix P(t=" << t << "):\n";
-        P.print();
 
 #ifdef USE_OPENACC
         auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);

@@ -5,7 +5,8 @@
 #include "ModelJC.h"
 #include <cmath>
 
-ModelJC::ModelJC() : rateMatrix_(4, 4) {
+ModelJC::ModelJC() : rateMatrix_(4, 4),
+                     baseFreq_(1, 4) {
     int n = 4;
 
     rateMatrix_.fill(1.0);
@@ -18,7 +19,7 @@ ModelJC::ModelJC() : rateMatrix_(4, 4) {
         }
     }
 
-    baseFreq_ = std::vector<double>(4, 0.25); // Equal base frequencies
+    baseFreq_.fill(.25); // Equal base frequencies
 }
 
 std::string ModelJC::getName() const {
@@ -29,7 +30,7 @@ Matrix ModelJC::getRateMatrix() const {
     return rateMatrix_;
 }
 
-std::vector<double> ModelJC::getBaseFrequencies() const {
+Matrix ModelJC::getBaseFrequencies() const {
     return baseFreq_;
 }
 

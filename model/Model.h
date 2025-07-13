@@ -15,7 +15,7 @@ public:
 
     virtual std::string getName() const = 0;
 
-    virtual std::vector<double> getBaseFrequencies() const = 0;
+    virtual Matrix getBaseFrequencies() const = 0;
 
     // Transition probability matrix P(t) for a given branch length t
     virtual Matrix getTransitionMatrix(double t) const = 0;
