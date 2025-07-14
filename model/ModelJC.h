@@ -19,9 +19,7 @@ public:
     // Transition probability matrix P(t)
     Matrix getTransitionMatrix(double t) const override;
 
-private:
-    Matrix rateMatrix_;
-    Matrix baseFreq_;
+
 };
 
 

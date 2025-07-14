@@ -23,9 +23,24 @@ public:
 
     // 4x4 substitution rate matrix for DNA
     virtual Matrix getRateMatrix() const = 0;
+    // Eigen components shared by all models
+    double* getEigenvalues() const;
 
+    double* getEigenvectors() const;
+
+    double* getInvEigenvectors() const;
+
+    double* getInvEigenvectorsTransposed() const;
+
+protected:
+    Matrix rateMatrix_;
+    Matrix baseFreq_;
+
+    double* eigenvalues = nullptr;
+    double* eigenvectors = nullptr;
+    double* inv_eigenvectors = nullptr;
+    double* inv_eigenvectors_transposed = nullptr;
 };
-
 
 
 #endif //POC_GPU_LIKELIHOOD_CALCULATIONS_MODEL_H

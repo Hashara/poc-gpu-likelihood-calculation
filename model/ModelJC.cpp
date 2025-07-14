@@ -4,9 +4,12 @@
 
 #include "ModelJC.h"
 #include <cmath>
+#include "../helper/Eigen/EigenUtils.h"
 
-ModelJC::ModelJC() : rateMatrix_(4, 4),
-                     baseFreq_(1, 4) {
+ModelJC::ModelJC() {
+    rateMatrix_ = Matrix(4, 4);
+    baseFreq_ = Matrix(1, 4);
+
     int n = 4;
 
     rateMatrix_.fill(1.0);
@@ -20,6 +23,14 @@ ModelJC::ModelJC() : rateMatrix_(4, 4),
     }
 
     baseFreq_.fill(.25); // Equal base frequencies
+
+    eigenvalues = new double[4];
+    eigenvectors = new double[16];
+    inv_eigenvectors = new double[16];
+    inv_eigenvectors_transposed = new double[16];
+
+    computeEigenDecomposition(rateMatrix_, eigenvalues, eigenvectors,
+                              inv_eigenvectors, inv_eigenvectors_transposed);
 }
 
 std::string ModelJC::getName() const {

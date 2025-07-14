@@ -40,6 +40,9 @@ set(SRC
         model/ModelJC.h
         tree/LikelihoodCalculator.cpp
         tree/LikelihoodCalculator.h
+
+        helper/Eigen/EigenUtils.cpp
+        helper/Eigen/EigenUtils.h
 )
 ######################################################
 # setup compilers
@@ -105,6 +108,16 @@ endif()
 
 
 add_executable(gpulcal ${SRC})
+
+# Find Eigen3 library
+if (NOT EIGEN3_INCLUDE_DIR)
+    find_package(Eigen3)
+    if(NOT EIGEN3_FOUND)
+        message(FATAL_ERROR "Eigen3 library not found. Either install it or rerun cmake with -DEIGEN3_INCLUDE_DIR=<installed_eigen3_dir>")
+    endif()
+endif()
+add_definitions(-I${EIGEN3_INCLUDE_DIR})
+
 
 
 ##################################################################
