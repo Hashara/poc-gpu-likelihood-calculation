@@ -66,3 +66,31 @@ void Matrix::fillRandom(unsigned int seed) {
         m_data[i] = dis(gen);
     }
 }
+
+Matrix Matrix::operator*(const Matrix &other) const {
+    if (m_cols != other.m_rows)
+        throw std::invalid_argument("Incompatible dimensions for multiplication.");
+
+    Matrix result(m_rows, other.m_cols);
+
+    for (size_t i = 0; i < m_rows; ++i) {
+        for (size_t j = 0; j < other.m_cols; ++j) {
+            double sum = 0.0;
+            for (size_t k = 0; k < m_cols; ++k) {
+                sum += at(i, k) * other.at(k, j);
+            }
+            result.at(i, j) = sum;
+        }
+    }
+    return result;
+}
+
+Matrix Matrix::hadamard(const Matrix &other) const {
+    if (m_rows != other.m_rows || m_cols != other.m_cols)
+        throw std::invalid_argument("Incompatible dimensions for Hadamard product.");
+
+    Matrix result(m_rows, m_cols);
+    for (size_t i = 0; i < m_rows * m_cols; ++i)
+        result.data()[i] = m_data[i] * other.data()[i];  // flat access
+    return result;
+}
