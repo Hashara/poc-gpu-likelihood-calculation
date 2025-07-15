@@ -20,22 +20,22 @@ Params parseArgs(int argc, char *argv[]) {
     Params params;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--a_row" && i + 1 < argc) params.a_row = std::stoi(argv[++i]);
-        else if (arg == "--a_col" && i + 1 < argc) params.a_col = std::stoi(argv[++i]);
-        else if (arg == "--b_row" && i + 1 < argc) params.b_row = std::stoi(argv[++i]);
-        else if (arg == "--b_col" && i + 1 < argc) params.b_col = std::stoi(argv[++i]);
-        else if (arg == "--seedA" && i + 1 < argc) params.seedA = std::stoi(argv[++i]);
-        else if (arg == "--seedB" && i + 1 < argc) params.seedB = std::stoi(argv[++i]);
-        else {
-            throw std::invalid_argument("Unknown or malformed flag: " + arg);
-        }
+//        if (arg == "--a_row" && i + 1 < argc) params.a_row = std::stoi(argv[++i]);
+//        else if (arg == "--a_col" && i + 1 < argc) params.a_col = std::stoi(argv[++i]);
+//        else if (arg == "--b_row" && i + 1 < argc) params.b_row = std::stoi(argv[++i]);
+//        else if (arg == "--b_col" && i + 1 < argc) params.b_col = std::stoi(argv[++i]);
+//        else if (arg == "--seedA" && i + 1 < argc) params.seedA = std::stoi(argv[++i]);
+//        else if (arg == "--seedB" && i + 1 < argc) params.seedB = std::stoi(argv[++i]);
+//        else {
+//            throw std::invalid_argument("Unknown or malformed flag: " + arg);
+//        }
     }
-    if (params.a_row < 1 || params.a_col < 1 || params.b_row < 1 || params.b_col < 1)
-        throw std::invalid_argument("Must specify positive dimensions for both A and B.");
-    if (params.a_col != params.b_row)
-        throw std::invalid_argument(
-                "A’s columns (" + std::to_string(params.a_col) +
-                ") must equal B’s rows (" + std::to_string(params.b_row) + ").");
+//    if (params.a_row < 1 || params.a_col < 1 || params.b_row < 1 || params.b_col < 1)
+//        throw std::invalid_argument("Must specify positive dimensions for both A and B.");
+//    if (params.a_col != params.b_row)
+//        throw std::invalid_argument(
+//                "A’s columns (" + std::to_string(params.a_col) +
+//                ") must equal B’s rows (" + std::to_string(params.b_row) + ").");
     return params;
 }
 
