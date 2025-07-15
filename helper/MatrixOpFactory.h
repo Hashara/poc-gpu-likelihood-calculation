@@ -7,13 +7,7 @@
 
 #include "MatrixOp.h"
 #include <memory>
-
-enum class MatrixOpType {
-    CPU,
-    CUBLAS,
-    CUDA_KERNEL,
-    OPENACC
-};
+#include "MatrixOpType.h"
 
 class MatrixOpFactory {
 public:

@@ -17,7 +17,7 @@
 class LikelihoodCalculator {
 
 public:
-    LikelihoodCalculator(Tree* tree, Alignment* aln, Model* model, MatrixOp* matrixOp);
+    LikelihoodCalculator(Tree* tree, Alignment* aln, Model* model, MatrixOpType matrixOpType);
 
     // Traverse the tree in post-order and compute partial likelihoods
     void traverseAndCompute(Node* node);
@@ -37,7 +37,7 @@ private:
     Tree* tree_;
     Alignment* aln_;
     Model* model_;
-    MatrixOp* matrixOp_;
+    MatrixOpType matrixOpType_;
 };
 
 

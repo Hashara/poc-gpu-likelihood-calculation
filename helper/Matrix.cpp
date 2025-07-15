@@ -4,6 +4,10 @@
 
 
 #include "Matrix.h"
+#include "MatrixOpDispatcher.h"
+
+// set default MatrixOpType
+MatrixOpType Matrix::m_opType = MatrixOpType::CPU;
 
 Matrix::Matrix(size_t rows, size_t cols)
         : m_rows(rows), m_cols(cols), m_data(nullptr) {
@@ -68,29 +72,13 @@ void Matrix::fillRandom(unsigned int seed) {
 }
 
 Matrix Matrix::operator*(const Matrix &other) const {
-    if (m_cols != other.m_rows)
-        throw std::invalid_argument("Incompatible dimensions for multiplication.");
-
-    Matrix result(m_rows, other.m_cols);
-
-    for (size_t i = 0; i < m_rows; ++i) {
-        for (size_t j = 0; j < other.m_cols; ++j) {
-            double sum = 0.0;
-            for (size_t k = 0; k < m_cols; ++k) {
-                sum += at(i, k) * other.at(k, j);
-            }
-            result.at(i, j) = sum;
-        }
-    }
-    return result;
+    return getBackend(m_opType)->multiply(*this, other);
 }
 
 Matrix Matrix::hadamard(const Matrix &other) const {
-    if (m_rows != other.m_rows || m_cols != other.m_cols)
-        throw std::invalid_argument("Incompatible dimensions for Hadamard product.");
+    return getBackend(m_opType)->hadamard(*this, other);
+}
 
-    Matrix result(m_rows, m_cols);
-    for (size_t i = 0; i < m_rows * m_cols; ++i)
-        result.data()[i] = m_data[i] * other.data()[i];  // flat access
-    return result;
+void Matrix::setMOpType(MatrixOpType mOpType) {
+    m_opType = mOpType;
 }

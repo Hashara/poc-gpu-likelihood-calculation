@@ -64,15 +64,16 @@ int main(int argc, char *argv[]) {
 
 
 #ifdef USE_OPENACC
-        auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
+//        auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
         //Tree tree2(MatrixOpType::OPENACC);
+        LikelihoodCalculator calculator(&tree, &aln, &jc, MatrixOpType::OPENACC);
 #else
-        auto op = MatrixOpFactory::create(MatrixOpType::CPU);
+//        auto op = MatrixOpFactory::create(MatrixOpType::CPU);
         //Tree tree2(MatrixOpType::CPU);
+        LikelihoodCalculator calculator(&tree, &aln, &jc, MatrixOpType::CPU);
 #endif
         //tree2.readFromFile(params.tree_file);
         // double loglk = tree2.computeLogLikelihood(aln, jc);
-        LikelihoodCalculator calculator(&tree, &aln, &jc, op.get());
         double logLikelihood = calculator.computeLogLikelihood();
 
         std::cout << "Log-likelihood: " << logLikelihood << std::endl;

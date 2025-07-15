@@ -11,6 +11,7 @@
 #include <cstring>
 #include <iostream>
 #include <random>
+#include "MatrixOpType.h"
 
 class Matrix {
 
@@ -34,9 +35,34 @@ public:
     void fill(double val);
     void print() const;
     void fillRandom(unsigned int seed = 0);  // Fills matrix with values in [0, 1]
+
+    // use operator loading
+    /**
+     * Matrix multiplication operator
+     * @param other a Matrix
+     * @return the product of this matrix and the other matrix
+     */
+    Matrix operator*(const Matrix& other) const;
+
+    /**
+     * Hadamard (element-wise) product.
+     * Example usage:
+     *  Matrix A={{1,2}, {3,4}};
+     *  Matrix B={{5,6}, {7,8}};
+     *  Matrix C = A.hadamard(B);
+     * @param other A Matrix
+     * @return the Hadamard product of this matrix and the other matrix
+     */
+    Matrix hadamard(const Matrix& other) const;
+
 private:
     size_t m_rows, m_cols;
     double* m_data;
+    static MatrixOpType m_opType;
+public:
+    static void setMOpType(MatrixOpType mOpType);
+    // Default to CPU operations
+
 };
 
 

@@ -15,6 +15,7 @@ set(SRC
         helper/MatrixOp.h
         helper/MatrixOpCPU.cpp
         helper/MatrixOpCPU.h
+        helper/MatrixOpType.h
         helper/MatrixOpFactory.cpp
         helper/MatrixOpFactory.h
         helper/MatrixUtils.h
@@ -40,6 +41,7 @@ set(SRC
         model/ModelJC.h
         tree/LikelihoodCalculator.cpp
         tree/LikelihoodCalculator.h
+        helper/MatrixOpDispatcher.h
 )
 ######################################################
 # setup compilers
