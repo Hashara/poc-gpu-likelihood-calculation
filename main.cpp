@@ -1,7 +1,7 @@
 #include <iostream>
 #include "helper/Matrix.h"
 #include "helper/MatrixOpFactory.h"
-#include "alignment/AlignmentIO.h"
+#include "alignment/alignmentIO.h"
 #include "tree/TreeReader.h"
 #include "tree/TreeUtils.h"
 #include "model/ModelJC.h"

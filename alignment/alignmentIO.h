@@ -2,7 +2,7 @@
 #define ALIGNMENT_IO_H
 
 #include <string>
-#include "alignment.h"
+#include "Alignment.h"
 
 using namespace std;
 
