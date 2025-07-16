@@ -19,30 +19,15 @@ Params parseArgs(int argc, char *argv[]) {
     Params params;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-//        if (arg == "--a_row" && i + 1 < argc) params.a_row = std::stoi(argv[++i]);
-//        else if (arg == "--a_col" && i + 1 < argc) params.a_col = std::stoi(argv[++i]);
-//        else if (arg == "--b_row" && i + 1 < argc) params.b_row = std::stoi(argv[++i]);
-//        else if (arg == "--b_col" && i + 1 < argc) params.b_col = std::stoi(argv[++i]);
-//        else if (arg == "--seedA" && i + 1 < argc) params.seedA = std::stoi(argv[++i]);
-//        else if (arg == "--seedB" && i + 1 < argc) params.seedB = std::stoi(argv[++i]);
-//        else {
-//            throw std::invalid_argument("Unknown or malformed flag: " + arg);
-//        }
+        if (arg == "-s" && i + 1 < argc) params.alignment_file = std::stoi(argv[++i]);
+        else if (arg == "-te" && i + 1 < argc) params.tree_file = std::stoi(argv[++i]);
     }
-//    if (params.a_row < 1 || params.a_col < 1 || params.b_row < 1 || params.b_col < 1)
-//        throw std::invalid_argument("Must specify positive dimensions for both A and B.");
-//    if (params.a_col != params.b_row)
-//        throw std::invalid_argument(
-//                "A’s columns (" + std::to_string(params.a_col) +
-//                ") must equal B’s rows (" + std::to_string(params.b_row) + ").");
     return params;
 }
 
 void printUsage(const char *progName) {
     std::cerr << "Usage: " << progName
-              << " --a_row N --a_col M --b_row P --b_col Q"
-                 " [--seedA S] [--seedB T]\n"
-                 "  Requires M == P.\n";
+              << "-s alignment -te tree.\n";
 }
 
 
@@ -65,15 +50,17 @@ int main(int argc, char *argv[]) {
 #ifdef USE_OPENACC
 //        auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
         //Tree tree2(MatrixOpType::OPENACC);
-        LikelihoodCalculator calculator(&tree, &aln, &jc, MatrixOpType::OPENACC);
+        tree.setMatrixOpType(MatrixOpType::OPENACC);
 #else
 //        auto op = MatrixOpFactory::create(MatrixOpType::CPU);
         //Tree tree2(MatrixOpType::CPU);
-        LikelihoodCalculator calculator(&tree, &aln, &jc, MatrixOpType::CPU);
+        tree.setMatrixOpType(MatrixOpType::CPU);
+
 #endif
         //tree2.readFromFile(params.tree_file);
+//        tree.computeLikelihood(&aln, &jc);
         // double loglk = tree2.computeLogLikelihood(aln, jc);
-        double logLikelihood = calculator.computeLogLikelihood();
+        double logLikelihood = tree.computeLikelihood(&aln, &jc);
 
         std::cout << "Log-likelihood: " << logLikelihood << std::endl;
 

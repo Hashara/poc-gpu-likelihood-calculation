@@ -5,14 +5,10 @@
 #include "LikelihoodCalculator.h"
 #define VERBOSE 1
 
-LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model, MatrixOpType matrixOp) {
-
+LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model) {
     tree_ = tree;
     aln_ = aln;
     model_ = model;
-    matrixOpType_ = matrixOp;
-    Matrix::setMOpType(matrixOpType_);
-
 }
 
 Matrix LikelihoodCalculator::buildTipLikelihood(const std::string& taxonName) {
