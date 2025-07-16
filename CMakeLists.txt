@@ -16,8 +16,6 @@ set(SRC
         helper/MatrixOpCPU.cpp
         helper/MatrixOpCPU.h
         helper/MatrixOpType.h
-        helper/MatrixOpFactory.cpp
-        helper/MatrixOpFactory.h
         helper/MatrixUtils.h
 
         alignment/Alignment.cpp
@@ -150,7 +148,6 @@ if (USE_GTEST)
         set(TEST_SRC
                 helper/Matrix.cpp
                 helper/MatrixOpCPU.cpp
-                helper/MatrixOpFactory.cpp
         )
 
         add_library(matrixlib STATIC ${TEST_SRC})

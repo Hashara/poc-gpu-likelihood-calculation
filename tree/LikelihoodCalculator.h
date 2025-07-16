@@ -12,7 +12,6 @@
 #include "Tree.h"
 #include "../alignment/Alignment.h"
 #include "../model/Model.h"
-#include "../helper/MatrixOpFactory.h"
 
 class LikelihoodCalculator {
 

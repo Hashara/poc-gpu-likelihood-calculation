@@ -1,6 +1,5 @@
 #include <iostream>
 #include "helper/Matrix.h"
-#include "helper/MatrixOpFactory.h"
 #include "alignment/alignmentIO.h"
 #include "tree/TreeReader.h"
 #include "tree/TreeUtils.h"
