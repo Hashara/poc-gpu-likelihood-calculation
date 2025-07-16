@@ -3,3 +3,18 @@
 //
 
 #include "Model.h"
+
+#ifdef USE_EIGEN
+const Matrix &Model::getEigenvalues() const {
+    return eigenvalues;
+}
+
+const Matrix &Model::getEigenvectors() const {
+    return eigenvectors;
+}
+
+const Matrix &Model::getInvEigenvectors() const {
+    return inv_eigenvectors;
+}
+
+#endif
