@@ -48,13 +48,15 @@ int main(int argc, char *argv[]) {
 
 
 #ifdef USE_OPENACC
-//        auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
         //Tree tree2(MatrixOpType::OPENACC);
         tree.setMatrixOpType(MatrixOpType::OPENACC);
+        std::cout << "Using OpenACC for matrix operations." << std::endl;
+#elif defined USE_EIGEN
+        cout << "Using Eigen for matrix operations." << std::endl;
 #else
-//        auto op = MatrixOpFactory::create(MatrixOpType::CPU);
         //Tree tree2(MatrixOpType::CPU);
         tree.setMatrixOpType(MatrixOpType::CPU);
+        std::cout << "Using CPU for matrix operations." << std::endl;
 
 #endif
         //tree2.readFromFile(params.tree_file);

@@ -7,14 +7,13 @@ option(USE_OPENACC "Enable OpenACC support" OFF)
 option(USE_CUDA     "Enable CUDA support" OFF)
 option(USE_CUBLAS   "Enable CUBLAS support" OFF)
 option(USE_OPENMP_GPU "Enable OpenMP GPU support" OFF)
+option(USE_EIGEN "Use Eigen3 library" OFF)
 
 set(SRC
         main.cpp
         helper/Matrix.cpp
         helper/Matrix.h
         helper/MatrixOp.h
-        helper/MatrixOpCPU.cpp
-        helper/MatrixOpCPU.h
         helper/MatrixOpType.h
         helper/MatrixUtils.h
 
@@ -103,6 +102,29 @@ else()
     message("CUBLAS        : NONE")
 endif()
 
+##################################################################
+# configure Eigen
+##################################################################
+# Find Eigen3 library
+if (USE_EIGEN)
+    message("Eigen3        : Yes")
+    if (NOT EIGEN3_INCLUDE_DIR)
+        find_package(Eigen3)
+        if(NOT EIGEN3_FOUND)
+            message(FATAL_ERROR "Eigen3 library not found. Either install it or rerun cmake with -DEIGEN3_INCLUDE_DIR=<installed_eigen3_dir>")
+        else()
+            add_definitions(-DUSE_EIGEN)
+        endif()
+    endif()
+    add_definitions(-I${EIGEN3_INCLUDE_DIR})
+else()
+    message("Eigen3        : NONE")
+    list(APPEND SRC
+            helper/MatrixOpCPU.cpp
+            helper/MatrixOpCPU.h)
+endif ()
+
+##################################################################
 
 add_executable(gpulcal ${SRC})
 

@@ -31,14 +31,14 @@ Matrix LikelihoodCalculator::buildTipLikelihood(const std::string& taxonName) {
     for (int p = 0; p < numPatterns; ++p) {
         int state = (*aln_).patterns[p][taxonIndex] - '0';
         for (int s = 0; s < numStates; ++s) {
-            L.at(s, p) = (s == state) ? 1.0 : 0.0;
+            L(s, p) = (s == state) ? 1.0 : 0.0;
         }
     }
 
 #ifdef VERBOSE
     cout << "Tip likelihood for " << taxonName << ":\n";
 
-    L.print();
+    cout << L << endl;
 #endif
     return L;
 }
@@ -67,27 +67,30 @@ void LikelihoodCalculator::computeInternalLikelihood(Node* node) {
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;
 
+#ifdef USE_EIGEN
+    node->partialLikelihood = hadamard(PL1, PL2);
+#else
     node->partialLikelihood =PL1.hadamard(PL2);
+#endif
     node->isPartialLikelihoodCalculated = true;
 
 #ifdef VERBOSE
     cout << "Internal node " << node->name << ":\n";
     cout << "Left child (" << left->name << ") partial likelihood:\n";
-    left->partialLikelihood.print();
+    cout << left->partialLikelihood << endl;
     cout << "Right child (" << right->name << ") partial likelihood:\n";
-    right->partialLikelihood.print();
+    cout << right->partialLikelihood << endl;
     cout << "Transition matrix P1 for left child:\n";
-    P1.print();
+    cout << P1 << endl;
     cout << "Transition matrix P2 for right child:\n";
-    P2.print();
+    cout << P2 << endl;
     cout << "Partial likelihood after multiplication with transition matrices:\n";
-    PL1.print();
-    PL2.print();
+    cout << "Left child likelihood after P1:\n";
+    cout << PL1 << endl;
+    cout << "Right child likelihood after P2:\n";
+    cout << PL2 << endl;
     cout << "Hadamard product of left and right child likelihoods:\n";
-    node->partialLikelihood.print();
-
-    cout << "Internal likelihood for node " << node->name << ":\n";
-    node->partialLikelihood.print();
+    cout << node->partialLikelihood << endl;
 #endif
 }
 
@@ -123,7 +126,7 @@ double LikelihoodCalculator::computeLogLikelihood() {
     Matrix siteLikelihoods = baseFrequencies * rootL;
 
     for (int j = 0; j < numPatterns; ++j) {
-        double siteLikelihood = siteLikelihoods.at(0, j);  // Assuming siteLikelihoods is a 1-row matrix
+        double siteLikelihood = siteLikelihoods(0, j);  // Assuming siteLikelihoods is a 1-row matrix
 
         // Multiply by the pattern frequency
         int freq = aln_->patterns[j].frequency;

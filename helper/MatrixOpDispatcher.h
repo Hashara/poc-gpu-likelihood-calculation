@@ -5,6 +5,9 @@
 #ifndef POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPDISPATCHER_H
 #define POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPDISPATCHER_H
 
+
+#ifndef USE_EIGEN
+
 #include "MatrixOp.h"
 #include "MatrixOpType.h"
 #include "MatrixOpCPU.h"
@@ -30,5 +33,5 @@ inline MatrixOp* getBackend(MatrixOpType type) {
             throw std::invalid_argument("Unsupported MatrixOpType in getBackend");
     }
 }
-
+#endif // USE_EIGEN
 #endif //POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPDISPATCHER_H

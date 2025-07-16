@@ -12,10 +12,10 @@ ModelJC::ModelJC() : rateMatrix_(4, 4),
     rateMatrix_.fill(1.0);
 // Zero diagonal and compute row sums
     for (int i = 0; i < n; ++i) {
-        rateMatrix_.at(i, i) = 0.0;
+        rateMatrix_(i, i) = 0.0;
         for (int j = 0; j < n; ++j) {
             if (i != j)
-                rateMatrix_.at(i, i) -= rateMatrix_.at(i, j);
+                rateMatrix_(i, i) -= rateMatrix_(i, j);
         }
     }
 
@@ -42,9 +42,9 @@ Matrix ModelJC::getTransitionMatrix(double t) const {
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
             if (i == j)
-                P.at(i, j) = 0.25 + 0.75 * e;
+                P(i, j) = 0.25 + 0.75 * e;
             else
-                P.at(i, j) = 0.25 - 0.25 * e;
+                P(i, j) = 0.25 - 0.25 * e;
         }
     }
     return P;

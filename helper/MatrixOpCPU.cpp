@@ -14,9 +14,9 @@ Matrix MatrixOpCPU::multiply(const Matrix &A, const Matrix &B) {
         for (size_t j = 0; j < B.cols(); ++j) {
             double sum = 0.0;
             for (size_t k = 0; k < A.cols(); ++k) {
-                sum += A.at(i, k) * B.at(k, j);
+                sum += A(i, k) * B(k, j);
             }
-            C.at(i, j) = sum;
+            C(i, j) = sum;
         }
     }
     return C;
@@ -30,7 +30,7 @@ Matrix MatrixOpCPU::hadamard(const Matrix &A, const Matrix &B) {
     Matrix C(A.rows(), A.cols());
     for (size_t i = 0; i < A.rows(); ++i) {
         for (size_t j = 0; j < A.cols(); ++j) {
-            C.at(i, j) = A.at(i, j) * B.at(i, j);
+            C(i, j) = A(i, j) * B(i, j);
         }
     }
     return C;

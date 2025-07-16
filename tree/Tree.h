@@ -22,7 +22,9 @@ public:
      * @param matrixOpType The type of matrix operation to be used.
      * * This will determine how likelihood calculations are performed
      */
+#ifndef USE_EIGEN
     void setMatrixOpType(MatrixOpType matrixOpType);
+#endif
 
     /** * Compute the likelihood of the tree given an alignment and model.
      * @param aln The alignment containing sequences for each taxon.
