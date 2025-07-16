@@ -1,0 +1,15 @@
+//
+// Created by Hashara Kumarasinghe on 15/7/2025.
+//
+
+#ifndef POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPTYPE_H
+#define POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPTYPE_H
+
+enum class MatrixOpType {
+    CPU,
+    CUBLAS,
+    CUDA_KERNEL,
+    OPENACC
+};
+
+#endif //POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPTYPE_H

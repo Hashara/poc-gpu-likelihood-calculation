@@ -4,6 +4,10 @@
 
 
 #include "Matrix.h"
+#include "MatrixOpDispatcher.h"
+
+// set default MatrixOpType
+MatrixOpType Matrix::m_opType = MatrixOpType::CPU;
 
 Matrix::Matrix(size_t rows, size_t cols)
         : m_rows(rows), m_cols(cols), m_data(nullptr) {
@@ -65,4 +69,16 @@ void Matrix::fillRandom(unsigned int seed) {
     for (size_t i = 0; i < m_rows * m_cols; ++i) {
         m_data[i] = dis(gen);
     }
+}
+
+Matrix Matrix::operator*(const Matrix &other) const {
+    return getBackend(m_opType)->multiply(*this, other);
+}
+
+Matrix Matrix::hadamard(const Matrix &other) const {
+    return getBackend(m_opType)->hadamard(*this, other);
+}
+
+void Matrix::setMOpType(MatrixOpType mOpType) {
+    m_opType = mOpType;
 }

@@ -5,13 +5,10 @@
 #include "LikelihoodCalculator.h"
 #define VERBOSE 1
 
-LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model, MatrixOp *matrixOp) {
-
+LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model) {
     tree_ = tree;
     aln_ = aln;
     model_ = model;
-    matrixOp_ = matrixOp;
-
 }
 
 Matrix LikelihoodCalculator::buildTipLikelihood(const std::string& taxonName) {
@@ -67,10 +64,10 @@ void LikelihoodCalculator::computeInternalLikelihood(Node* node) {
     Matrix P1 = model_->getTransitionMatrix(left->branchLength);
     Matrix P2 = model_->getTransitionMatrix(right->branchLength);
 
-    Matrix PL1 = matrixOp_->multiply(P1, L1);
-    Matrix PL2 = matrixOp_->multiply(P2, L2);
+    Matrix PL1 = P1 * L1;
+    Matrix PL2 = P2 * L2;
 
-    node->partialLikelihood =matrixOp_->hadamard(PL1, PL2);
+    node->partialLikelihood =PL1.hadamard(PL2);
     node->isPartialLikelihoodCalculated = true;
 
 #ifdef VERBOSE
@@ -117,13 +114,13 @@ double LikelihoodCalculator::computeLogLikelihood() {
     traverseAndCompute(tree_->root);
 
     const Matrix& rootL = tree_->root->partialLikelihood;
-    int numStates = rootL.rows();
+
     int numPatterns = rootL.cols();
 
     double logL = 0.0;
 
     Matrix baseFrequencies = model_->getBaseFrequencies();
-    Matrix siteLikelihoods = matrixOp_->multiply(baseFrequencies, rootL);
+    Matrix siteLikelihoods = baseFrequencies * rootL;
 
     for (int j = 0; j < numPatterns; ++j) {
         double siteLikelihood = siteLikelihoods.at(0, j);  // Assuming siteLikelihoods is a 1-row matrix

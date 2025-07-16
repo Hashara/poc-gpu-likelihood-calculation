@@ -15,8 +15,7 @@ set(SRC
         helper/MatrixOp.h
         helper/MatrixOpCPU.cpp
         helper/MatrixOpCPU.h
-        helper/MatrixOpFactory.cpp
-        helper/MatrixOpFactory.h
+        helper/MatrixOpType.h
         helper/MatrixUtils.h
 
         alignment/Alignment.cpp
@@ -40,6 +39,7 @@ set(SRC
         model/ModelJC.h
         tree/LikelihoodCalculator.cpp
         tree/LikelihoodCalculator.h
+        helper/MatrixOpDispatcher.h
 )
 ######################################################
 # setup compilers
@@ -148,7 +148,6 @@ if (USE_GTEST)
         set(TEST_SRC
                 helper/Matrix.cpp
                 helper/MatrixOpCPU.cpp
-                helper/MatrixOpFactory.cpp
         )
 
         add_library(matrixlib STATIC ${TEST_SRC})

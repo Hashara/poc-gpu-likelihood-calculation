@@ -12,12 +12,11 @@
 #include "Tree.h"
 #include "../alignment/Alignment.h"
 #include "../model/Model.h"
-#include "../helper/MatrixOpFactory.h"
 
 class LikelihoodCalculator {
 
 public:
-    LikelihoodCalculator(Tree* tree, Alignment* aln, Model* model, MatrixOp* matrixOp);
+    LikelihoodCalculator(Tree* tree, Alignment* aln, Model* model);
 
     // Traverse the tree in post-order and compute partial likelihoods
     void traverseAndCompute(Node* node);
@@ -37,7 +36,6 @@ private:
     Tree* tree_;
     Alignment* aln_;
     Model* model_;
-    MatrixOp* matrixOp_;
 };
 
 
