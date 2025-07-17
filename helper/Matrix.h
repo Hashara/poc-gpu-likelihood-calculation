@@ -6,6 +6,14 @@
 #define POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIX_H
 
 
+
+
+#ifdef USE_EIGEN
+#include <Eigen/Dense>
+using Matrix = Eigen::MatrixXd;
+Matrix hadamard(const Matrix& A, const Matrix& B);
+
+#else
 #include <cstdlib>
 #include <stdexcept>
 #include <cstring>
@@ -29,11 +37,13 @@ public:
     size_t rows() const;
     size_t cols() const;
 
-    double& at(size_t i, size_t j);             // Access (row, col)
-    const double& at(size_t i, size_t j) const;
+    // Access using (i, j) notation
+    double& operator()(size_t i, size_t j);             // non-const access
+    const double& operator()(size_t i, size_t j) const; // const access
+
 
     void fill(double val);
-    void print() const;
+
     void fillRandom(unsigned int seed = 0);  // Fills matrix with values in [0, 1]
 
     // use operator loading
@@ -65,5 +75,7 @@ public:
 
 };
 
+std::ostream& operator<<(std::ostream& os, const Matrix& matrix); // replace print with the operator<<
 
+#endif // USE_EIGEN
 #endif //POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIX_H

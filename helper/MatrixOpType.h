@@ -7,6 +7,7 @@
 
 enum class MatrixOpType {
     CPU,
+    EIGEN,
     CUBLAS,
     CUDA_KERNEL,
     OPENACC

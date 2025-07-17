@@ -31,14 +31,14 @@ Matrix LikelihoodCalculator::buildTipLikelihood(const std::string& taxonName) {
     for (int p = 0; p < numPatterns; ++p) {
         int state = (*aln_).patterns[p][taxonIndex] - '0';
         for (int s = 0; s < numStates; ++s) {
-            L.at(s, p) = (s == state) ? 1.0 : 0.0;
+            L(s, p) = (s == state) ? 1.0 : 0.0;
         }
     }
 
 #ifdef VERBOSE
     cout << "Tip likelihood for " << taxonName << ":\n";
 
-    L.print();
+    cout << L << endl;
 #endif
     return L;
 }
@@ -58,6 +58,7 @@ void LikelihoodCalculator::computeInternalLikelihood(Node* node) {
     Node* left = node->children[0];
     Node* right = node->children[1];
 
+
     const Matrix& L1 = left->partialLikelihood;
     const Matrix& L2 = right->partialLikelihood;
 
@@ -67,28 +68,12 @@ void LikelihoodCalculator::computeInternalLikelihood(Node* node) {
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;
 
+#ifdef USE_EIGEN
+    node->partialLikelihood = hadamard(PL1, PL2);
+#else
     node->partialLikelihood =PL1.hadamard(PL2);
-    node->isPartialLikelihoodCalculated = true;
-
-#ifdef VERBOSE
-    cout << "Internal node " << node->name << ":\n";
-    cout << "Left child (" << left->name << ") partial likelihood:\n";
-    left->partialLikelihood.print();
-    cout << "Right child (" << right->name << ") partial likelihood:\n";
-    right->partialLikelihood.print();
-    cout << "Transition matrix P1 for left child:\n";
-    P1.print();
-    cout << "Transition matrix P2 for right child:\n";
-    P2.print();
-    cout << "Partial likelihood after multiplication with transition matrices:\n";
-    PL1.print();
-    PL2.print();
-    cout << "Hadamard product of left and right child likelihoods:\n";
-    node->partialLikelihood.print();
-
-    cout << "Internal likelihood for node " << node->name << ":\n";
-    node->partialLikelihood.print();
 #endif
+    node->isPartialLikelihoodCalculated = true;
 }
 
 
@@ -112,24 +97,27 @@ void LikelihoodCalculator::traverseAndCompute(Node* node) {
 double LikelihoodCalculator::computeLogLikelihood() {
     // Traverse and compute partial likelihoods for all nodes
     traverseAndCompute(tree_->root);
+    double logL = 0.0;
 
     const Matrix& rootL = tree_->root->partialLikelihood;
 
-    int numPatterns = rootL.cols();
+#ifdef VERBOSE
+    cout << "Root partial likelihood matrix:\n";
+    cout << rootL << endl;
+#endif
 
-    double logL = 0.0;
+    int numPatterns = rootL.cols();
 
     Matrix baseFrequencies = model_->getBaseFrequencies();
     Matrix siteLikelihoods = baseFrequencies * rootL;
 
     for (int j = 0; j < numPatterns; ++j) {
-        double siteLikelihood = siteLikelihoods.at(0, j);  // Assuming siteLikelihoods is a 1-row matrix
+        double siteLikelihood = siteLikelihoods(0, j);  // Assuming siteLikelihoods is a 1-row matrix
 
         // Multiply by the pattern frequency
         int freq = aln_->patterns[j].frequency;
         logL += freq * std::log(siteLikelihood);
     }
-
     return logL;
 }
 
