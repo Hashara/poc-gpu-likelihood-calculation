@@ -59,56 +59,20 @@ int main(int argc, char *argv[]) {
         std::cout << "Using CPU for matrix operations." << std::endl;
 
 #endif
-        //tree2.readFromFile(params.tree_file);
-//        tree.computeLikelihood(&aln, &jc);
-        // double loglk = tree2.computeLogLikelihood(aln, jc);
+        auto start = std::chrono::high_resolution_clock::now();
+
         double logLikelihood = tree.computeLikelihood(&aln, &jc);
 
-        std::cout << "Log-likelihood: " << logLikelihood << std::endl;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
 
+        std::cout << "Log-likelihood: " << logLikelihood << std::endl;
+        std::cout << "Time taken: " << elapsed.count() << " seconds" << std::endl;
 //        // Cleanup
 //        delete jc;
 //        delete tree;
 //        delete aln;
 
-
-
-
-
-
-        // commenting out the matrix operations for now
-       /* Matrix A(params.a_row, params.a_col);
-        Matrix C(params.a_row, params.a_col); // create C with A dimensions
-        Matrix B(params.b_row, params.b_col);
-        Matrix D(params.b_row, params.b_col); // create D with B dimensions
-
-        A.fillRandom(params.seedA);
-        B.fillRandom(params.seedB);
-        C.fillRandom(params.seedC);
-        D.fillRandom(params.seedD);
-
-#ifdef USE_OPENACC
-        auto op = MatrixOpFactory::create(MatrixOpType::OPENACC);
-#else
-        auto op = MatrixOpFactory::create(MatrixOpType::CPU);
-#endif
-
-        // start timer
-        auto t0 = std::chrono::high_resolution_clock::now();
-
-        Matrix AB = op->multiply(A, B);
-        Matrix CD = op->multiply(C, D);
-        Matrix H = op->hadamard(AB, CD);
-//        Matrix H = op->hadamard(A, B);
-
-        // stop timer
-        auto t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double,std::milli> ms = t1 - t0;
-
-        // output timing
-        std::cout << "Time taken: " << ms.count() << " ms\n";
-
-*/
     }
     catch (const std::exception &ex) {
         std::cerr << "Error: " << ex.what() << "\n";
