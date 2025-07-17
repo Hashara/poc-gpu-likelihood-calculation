@@ -3,7 +3,6 @@
 //
 
 #include "LikelihoodCalculator.h"
-#define VERBOSE 1
 
 LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model) {
     tree_ = tree;
