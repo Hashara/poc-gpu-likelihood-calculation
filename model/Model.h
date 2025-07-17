@@ -8,6 +8,7 @@
 #include <vector>
 #include <string>
 #include "../helper/Matrix.h"
+#define DECOMP 1
 
 class Model {
 public:
@@ -24,7 +25,7 @@ public:
     // 4x4 substitution rate matrix for DNA
     virtual Matrix getRateMatrix() const = 0;
 
-#ifdef USE_EIGEN
+#if defined(USE_EIGEN) && defined(DECOMP)
     // Eigen components shared by all models
     const Matrix &getEigenvalues() const;
     const Matrix &getEigenvectors() const;

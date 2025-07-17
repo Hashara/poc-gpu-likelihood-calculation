@@ -4,7 +4,7 @@
 
 #include "Model.h"
 
-#ifdef USE_EIGEN
+#if defined(USE_EIGEN) && defined(DECOMP)
 const Matrix &Model::getEigenvalues() const {
     return eigenvalues;
 }

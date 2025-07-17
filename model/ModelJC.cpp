@@ -7,6 +7,7 @@
 #include <iostream>
 //#define VERBOSE 1
 
+
 std::string ModelJC::getName() const {
     return "JC69";
 }
@@ -22,11 +23,6 @@ Matrix ModelJC::getBaseFrequencies() const {
 #ifdef USE_EIGEN
 ModelJC::ModelJC() {
     int n = 4;
-
-    // JC69 rate matrix
-//    rateMatrix_ = Matrix::Constant(n, n, 1.0);
-//    rateMatrix_.diagonal().setZero();
-//    rateMatrix_.diagonal() = -rateMatrix_.rowwise().sum();
     rateMatrix_ = Matrix(4, 4);  // Or rateMatrix_.resize(4, 4);
 
     rateMatrix_ << -3.0, 1.0, 1.0, 1.0,
@@ -39,11 +35,15 @@ ModelJC::ModelJC() {
 
     baseFreq_ = Matrix::Constant(1, n, 0.25);  // π = [0.25, 0.25, 0.25, 0.25]
 
+#ifdef DECOMP
     decomposeRateMatrix();
-
+#endif
 }
 
 Matrix ModelJC::getTransitionMatrix(double t) const {
+#ifdef DECOMP
+    return eigenvectors * getExpDiagMatrix(t) * inv_eigenvectors;
+#else
     double e = std::exp(-4.0 * t / 3.0);
     double diag = 0.25 + 0.75 * e;
     double off_diag = 0.25 - 0.25 * e;
@@ -52,28 +52,12 @@ Matrix ModelJC::getTransitionMatrix(double t) const {
     P.diagonal().setConstant(diag);              // Set diagonal
 
     return P;
+#endif
 }
 
+#ifdef DECOMP
 Matrix ModelJC::getExpDiagMatrix(double t) const {
     Eigen::VectorXd expLambda = (eigenvalues.array() * t).exp();
-#ifdef VERBOSE
-    std::cout << "Eigenvalues: " << eigenvalues.transpose() << std::endl;
-    std::cout << "Exp(eigenvalues * t): " << expLambda.transpose() << std::endl;
-    Matrix EigenP = eigenvectors * expLambda.asDiagonal() * inv_eigenvectors;
-    std::cout << "Eigen P(t):\n" << EigenP << std::endl;
-
-    Matrix classicP = getTransitionMatrix(t);
-    std::cout << "Classic P(t):\n" << classicP << std::endl;
-
-    double error = (EigenP - classicP).norm();
-
-    std::cout << "‖P_eigen - P_direct‖ = " << error << std::endl;
-    if (error < 1e-10) {
-        std::cout << "✅ accurate.\n";
-    } else {
-        std::cout << "⚠️ may be inaccurate.\n";
-    }
-#endif
     return expLambda.asDiagonal();  // returns 4x4 diagonal matrix
 }
 
@@ -97,10 +81,9 @@ void ModelJC::decomposeRateMatrix() {
     std::cout << "Eigenvectors (U):\n" << eigenvectors << std::endl;
     std::cout << "Inverse Eigenvectors (U⁻¹):\n" << inv_eigenvectors << std::endl;
 #endif
-//    inv_eigenvectors_transposed = inv_eigenvectors.transpose();
 }
 
-
+#endif // DECOMP
 
 #else
 ModelJC::ModelJC() {

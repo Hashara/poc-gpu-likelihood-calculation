@@ -4,7 +4,6 @@
 
 #include "LikelihoodCalculator.h"
 #define VERBOSE 1
-//#define DECOMP 1
 
 LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model) {
     tree_ = tree;
@@ -41,16 +40,7 @@ Matrix LikelihoodCalculator::buildTipLikelihood(const std::string& taxonName) {
 
     cout << L << endl;
 #endif
-
-#ifdef DECOMP
-    const Matrix& Uinv = model_->getInvEigenvectors();
-    Matrix V = Uinv * L;
-
-    return V;
-
-#else
     return L;
-#endif
 }
 
 
@@ -69,22 +59,6 @@ void LikelihoodCalculator::computeInternalLikelihood(Node* node) {
     Node* right = node->children[1];
 
 
-#ifdef DECOMP
-    const Matrix& V1 = left->partialLikelihood;
-    const Matrix& V2 = right->partialLikelihood;
-
-    Matrix P1 = model_->getExpDiagMatrix(left->branchLength);
-    Matrix P2 = model_->getExpDiagMatrix(right->branchLength);
-
-    Matrix PV1;
-    Matrix PV2;
-
-    // For internal nodes, we can directly use the transition matrices
-    PV1 = P1 * V1;
-    PV2 = P2 * V2;
-
-    node->partialLikelihood = hadamard(PV1, PV2);
-#else
     const Matrix& L1 = left->partialLikelihood;
     const Matrix& L2 = right->partialLikelihood;
 
@@ -98,7 +72,6 @@ void LikelihoodCalculator::computeInternalLikelihood(Node* node) {
     node->partialLikelihood = hadamard(PL1, PL2);
 #else
     node->partialLikelihood =PL1.hadamard(PL2);
-#endif
 #endif
     node->isPartialLikelihoodCalculated = true;
 }
@@ -126,39 +99,11 @@ double LikelihoodCalculator::computeLogLikelihood() {
     traverseAndCompute(tree_->root);
     double logL = 0.0;
 
-#ifdef DECOMP
-    const Matrix& rootV = tree_->root->partialLikelihood;
-
-    int numPatterns = rootV.cols();
-
-    // Get the base frequencies from the model
-    Matrix baseFrequencies = model_->getBaseFrequencies();
-
-    const Matrix& U = model_->getEigenvectors();
-    Matrix siteLikelihoods = baseFrequencies * (U * rootV);
-
-
-    for (int j = 0; j < numPatterns; ++j) {
-        double siteLikelihood = siteLikelihoods(0, j);
-
-        // Multiply by the pattern frequency
-        int freq = aln_->patterns[j].frequency;
-        logL += freq * std::log(siteLikelihood);
-    }
-
-#else
     const Matrix& rootL = tree_->root->partialLikelihood;
 
 #ifdef VERBOSE
     cout << "Root partial likelihood matrix:\n";
     cout << rootL << endl;
-
-    /*
-     * 0.0289004 0.0289004 0.00952929 0.00952929
-        0.0118843 0.0118843 0.0118843 0.0118843
-        0.00952929 0.00952929 0.0118843 0.0289004
-        0.00952929 0.00952929 0.0231734 0.00952929
-     */
 #endif
 
     int numPatterns = rootL.cols();
@@ -173,7 +118,6 @@ double LikelihoodCalculator::computeLogLikelihood() {
         int freq = aln_->patterns[j].frequency;
         logL += freq * std::log(siteLikelihood);
     }
-#endif
     return logL;
 }
 

@@ -19,7 +19,7 @@ public:
     // Transition probability matrix P(t)
     Matrix getTransitionMatrix(double t) const override;
 
-#ifdef USE_EIGEN
+#if defined(USE_EIGEN) && defined(DECOMP)
     Matrix getExpDiagMatrix(double t) const override;
 
     void decomposeRateMatrix();
