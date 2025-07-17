@@ -8,7 +8,7 @@
 #include <vector>
 #include <string>
 #include "../helper/Matrix.h"
-#define DECOMP 1
+//#define DECOMP 1
 
 class Model {
 public:
@@ -37,7 +37,7 @@ protected:
     Matrix rateMatrix_;
     Matrix baseFreq_;
 
-#ifdef USE_EIGEN
+#if defined(USE_EIGEN) && defined(DECOMP)
     Eigen::VectorXd eigenvalues;
     Matrix eigenvectors ;
     Matrix inv_eigenvectors ;

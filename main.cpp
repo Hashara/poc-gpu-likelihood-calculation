@@ -7,6 +7,10 @@
 #include "tree/LikelihoodCalculator.h"
 #include <chrono>
 #include <string>
+#include <iomanip>  // for std::setprecision
+
+
+//#define VERBOSE
 
 struct Params {
     int a_row, a_col, b_row, b_col;
@@ -19,8 +23,8 @@ Params parseArgs(int argc, char *argv[]) {
     Params params;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "-s" && i + 1 < argc) params.alignment_file = std::stoi(argv[++i]);
-        else if (arg == "-te" && i + 1 < argc) params.tree_file = std::stoi(argv[++i]);
+        if (arg == "-s" && i + 1 < argc) params.alignment_file = argv[++i];
+        else if (arg == "-te" && i + 1 < argc) params.tree_file = argv[++i];
     }
     return params;
 }
@@ -37,13 +41,15 @@ int main(int argc, char *argv[]) {
 
         Alignment aln;
         readPhylipFile(params.alignment_file, aln);
-        aln.printAlignment();
 
         TreeReader reader;
         Tree tree = reader.readFromFile(params.tree_file);
         std::cout << "Tree loaded successfully.\n";
-        printTree(tree.root);
+#ifdef VERBOSE
+        aln.printAlignment();
 
+        printTree(tree.root);
+#endif
         ModelJC jc;
 
 
@@ -66,7 +72,7 @@ int main(int argc, char *argv[]) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
 
-        std::cout << "Log-likelihood: " << logLikelihood << std::endl;
+        std::cout << std::setprecision(18) << "Log-likelihood: " << logLikelihood << std::endl;
         std::cout << "Time taken: " << elapsed.count() << " seconds" << std::endl;
 //        // Cleanup
 //        delete jc;
