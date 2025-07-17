@@ -10,6 +10,8 @@ double Tree::computeLikelihood(Alignment *aln, Model *model) {
     return calc.computeLogLikelihood();
 }
 
+#ifndef USE_EIGEN
 void Tree::setMatrixOpType(MatrixOpType matrixOpType) {
     Matrix::setMOpType(matrixOpType);
 }
+#endif

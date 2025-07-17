@@ -7,6 +7,8 @@
 
 #include "Matrix.h"
 
+#ifndef USE_EIGEN
+
 class MatrixOp {
 public:
     virtual Matrix multiply(const Matrix& A, const Matrix& B) = 0;
@@ -14,4 +16,5 @@ public:
     virtual ~MatrixOp() = default;
 };
 
+#endif // USE_EIGEN
 #endif //POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOP_H

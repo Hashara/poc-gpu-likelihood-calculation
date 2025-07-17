@@ -6,6 +6,19 @@
 #include "Matrix.h"
 #include "MatrixOpDispatcher.h"
 
+#ifdef USE_EIGEN
+#include <Eigen/Dense>
+using Matrix = Eigen::MatrixXd;
+
+
+Matrix hadamard(const Matrix& A, const Matrix& B) {
+    if (A.rows() != B.rows() || A.cols() != B.cols()) {
+        throw std::invalid_argument("Hadamard: matrix size mismatch.");
+    }
+    return A.array() * B.array();
+}
+
+#else
 // set default MatrixOpType
 MatrixOpType Matrix::m_opType = MatrixOpType::CPU;
 
@@ -41,26 +54,10 @@ const double* Matrix::data() const { return m_data; }
 size_t Matrix::rows() const { return m_rows; }
 size_t Matrix::cols() const { return m_cols; }
 
-double& Matrix::at(size_t i, size_t j) {
-    return m_data[j * m_rows + i];  // column-major access
-}
-
-const double& Matrix::at(size_t i, size_t j) const {
-    return m_data[j * m_rows + i];
-}
-
 void Matrix::fill(double val) {
     std::fill(m_data, m_data + m_rows * m_cols, val);
 }
 
-void Matrix::print() const {
-    for (size_t i = 0; i < m_rows; ++i) {
-        for (size_t j = 0; j < m_cols; ++j) {
-            std::cout << at(i, j) << " ";
-        }
-        std::cout << "\n";
-    }
-}
 
 void Matrix::fillRandom(unsigned int seed) {
     std::mt19937 gen(seed);                        // Seeded RNG
@@ -69,6 +66,14 @@ void Matrix::fillRandom(unsigned int seed) {
     for (size_t i = 0; i < m_rows * m_cols; ++i) {
         m_data[i] = dis(gen);
     }
+}
+
+double& Matrix::operator()(size_t i, size_t j) {
+    return m_data[i * m_cols + j];
+}
+
+const double& Matrix::operator()(size_t i, size_t j) const {
+    return m_data[i * m_cols + j];
 }
 
 Matrix Matrix::operator*(const Matrix &other) const {
@@ -82,3 +87,15 @@ Matrix Matrix::hadamard(const Matrix &other) const {
 void Matrix::setMOpType(MatrixOpType mOpType) {
     m_opType = mOpType;
 }
+
+std::ostream& operator<<(std::ostream& os, const Matrix& matrix) {
+    for (size_t i = 0; i < matrix.rows(); ++i) {
+        for (size_t j = 0; j < matrix.cols(); ++j) {
+            os << matrix(i, j) << " ";
+        }
+        os << "\n";
+    }
+    return os;
+}
+
+#endif
