@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include "../helper/Matrix.h"
+#include <unordered_set>
 
 class Node {
 public:
@@ -20,6 +21,7 @@ public:
     // Likelihood matrix (states x patterns)
     Matrix partialLikelihood;
     bool isPartialLikelihoodCalculated = false;
+    std::unordered_set<int> completedPackets; // Tracks completed packet IDs for chunked computation
 
     bool isLeaf() const {
         return children.empty();
