@@ -21,7 +21,7 @@ public:
     // Likelihood matrix (states x patterns)
     Matrix partialLikelihood;
     bool isPartialLikelihoodCalculated = false;
-    std::unordered_set<int> completedPackets; // For leaf nodes, stores likelihood for each state
+    std::unordered_set<int> completedPackets; // Tracks completed packet IDs for chunked computation
 
     bool isLeaf() const {
         return children.empty();
