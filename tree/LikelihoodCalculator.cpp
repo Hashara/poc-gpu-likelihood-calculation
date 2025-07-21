@@ -171,11 +171,11 @@ double LikelihoodCalculator::computeLogLikelihood() {
 }
 
 void LikelihoodCalculator::computeBound(int chunkSize, int numThreads, vector<size_t> &limits) {
-    int totalPatterns = aln_->patterns.size();
+    size_t totalPatterns = aln_->patterns.size();
     size_t numChunks = (totalPatterns + chunkSize - 1) / chunkSize;
     limits.clear();
     for (size_t i = 0; i <= numChunks; ++i) {
-        limits.push_back(std::min(static_cast<int>(i * chunkSize), totalPatterns));
+        limits.push_back(std::min(i * chunkSize, totalPatterns));
     }
 }
 

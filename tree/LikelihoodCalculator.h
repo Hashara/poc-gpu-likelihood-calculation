@@ -68,17 +68,15 @@ public:
 
     void setNumThreads(int numThreads);
 
+    void setIsBounded(bool isBounded);
 
 private:
     Tree* tree_;
     Alignment* aln_;
     Model* model_;
-    bool isBounded_ = false;
+    bool isBounded_ = false; // Flag to indicate if bounded computation is used
     int chunk_size_ = 1000; // Default chunk size for bounded computation
     int num_threads_ = 1; // Default number of threads for bounded computation
-public:
-    void setIsBounded(bool isBounded);
-    // Flag to indicate if bounded computation is used
 };
 
 
