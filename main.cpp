@@ -39,12 +39,26 @@ int main(int argc, char *argv[]) {
     try {
         auto params = parseArgs(argc, argv);
 
+        auto start = std::chrono::high_resolution_clock::now();
         Alignment aln;
         readPhylipFile(params.alignment_file, aln);
+        auto end = std::chrono::high_resolution_clock::now();
 
+        std::cout << "Alignment loaded successfully.\n";
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << "Time taken to read alignment: " << elapsed.count() << " seconds\n";
+
+        start = std::chrono::high_resolution_clock::now();
         TreeReader reader;
         Tree tree = reader.readFromFile(params.tree_file);
+        end = std::chrono::high_resolution_clock::now();
+
         std::cout << "Tree loaded successfully.\n";
+        elapsed = end - start;
+        std::cout << "Time taken to read tree: " << elapsed.count() << " seconds\n";
+
+
+
 #ifdef VERBOSE
         aln.printAlignment();
 
@@ -66,12 +80,12 @@ int main(int argc, char *argv[]) {
 
 #endif
         cout << "Starting likelihood calculation..." << endl;
-        auto start = std::chrono::high_resolution_clock::now();
+        start = std::chrono::high_resolution_clock::now();
 
         double logLikelihood = tree.computeLikelihood(&aln, &jc);
 
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = end - start;
+        end = std::chrono::high_resolution_clock::now();
+        elapsed = end - start;
 
         std::cout << std::setprecision(18) << "Log-likelihood: " << logLikelihood << std::endl;
         std::cout << "Time taken: " << elapsed.count() << " seconds" << std::endl;
