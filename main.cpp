@@ -65,6 +65,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Using CPU for matrix operations." << std::endl;
 
 #endif
+        cout << "Starting likelihood calculation..." << endl;
         auto start = std::chrono::high_resolution_clock::now();
 
         double logLikelihood = tree.computeLikelihood(&aln, &jc);
