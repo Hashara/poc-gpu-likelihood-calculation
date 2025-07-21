@@ -7,6 +7,7 @@
 
 double Tree::computeLikelihood(Alignment *aln, Model *model) {
     LikelihoodCalculator calc(this, aln, model);
+//    calc.setIsBounded(true);
     return calc.computeLogLikelihood();
 }
 

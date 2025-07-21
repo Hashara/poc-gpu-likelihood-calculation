@@ -5,7 +5,6 @@
 #include "ModelJC.h"
 #include <cmath>
 #include <iostream>
-//#define VERBOSE 1
 
 
 std::string ModelJC::getName() const {
@@ -23,17 +22,20 @@ Matrix ModelJC::getBaseFrequencies() const {
 #ifdef USE_EIGEN
 ModelJC::ModelJC() {
     int n = 4;
-    rateMatrix_ = Matrix(4, 4);  // Or rateMatrix_.resize(4, 4);
+    rateMatrix_ = Matrix(n, n);
+    baseFreq_ = Matrix(1, n);
 
-    rateMatrix_ << -3.0, 1.0, 1.0, 1.0,
-            1.0, -3.0, 1.0, 1.0,
-            1.0, 1.0, -3.0, 1.0,
-            1.0, 1.0, 1.0, -3.0;
+    rateMatrix_.fill(1.0);
+// Zero diagonal and compute row sums
+    for (int i = 0; i < n; ++i) {
+        rateMatrix_(i, i) = 0.0;
+        for (int j = 0; j < n; ++j) {
+            if (i != j)
+                rateMatrix_(i, i) -= rateMatrix_(i, j);
+        }
+    }
 
-    rateMatrix_ /= 3.0;  // Normalize to make the row sums equal to 0
-    std::cout << "Rate matrix:\n" << rateMatrix_ << std::endl;
-
-    baseFreq_ = Matrix::Constant(1, n, 0.25);  // π = [0.25, 0.25, 0.25, 0.25]
+    baseFreq_.fill(.25); // Equal base frequencies
 
 #ifdef DECOMP
     decomposeRateMatrix();
@@ -45,12 +47,16 @@ Matrix ModelJC::getTransitionMatrix(double t) const {
     return eigenvectors * getExpDiagMatrix(t) * inv_eigenvectors;
 #else
     double e = std::exp(-4.0 * t / 3.0);
-    double diag = 0.25 + 0.75 * e;
-    double off_diag = 0.25 - 0.25 * e;
+    Matrix P(4, 4);
 
-    Matrix P = Matrix::Constant(4, 4, off_diag);  // Fill all with off-diagonal
-    P.diagonal().setConstant(diag);              // Set diagonal
-
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            if (i == j)
+                P(i, j) = 0.25 + 0.75 * e;
+            else
+                P(i, j) = 0.25 - 0.25 * e;
+        }
+    }
     return P;
 #endif
 }
