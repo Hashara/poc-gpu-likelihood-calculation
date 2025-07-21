@@ -30,38 +30,32 @@ void readPhylipFile(const string& filename, Alignment& aln) {
 
     size_t num_taxa, num_sites;
     infile >> num_taxa >> num_sites;
-    aln.num_sites = 0; // we'll increment this via pattern frequency
+    aln.num_sites = 0;
 
     string name, sequence;
     vector<string> raw_seqs;
 
-    // Read each sequence line
+    // Read sequence lines
     for (size_t i = 0; i < num_taxa; ++i) {
         infile >> name >> sequence;
         aln.addTaxonName(name);
         raw_seqs.push_back(sequence);
     }
 
-    // Convert columns into patterns
+    unordered_map<string, int> pattern_map;
+
     for (size_t site = 0; site < num_sites; ++site) {
         string encoded_col;
         for (size_t t = 0; t < num_taxa; ++t) {
             encoded_col += encodeDNA(raw_seqs[t][site]);
         }
+        pattern_map[encoded_col]++;
+        aln.num_sites++;  // Every column contributes to total site count
+    }
 
-        // check if this pattern already exists
-        bool found = false;
-        for (auto& p : aln.patterns) {
-            if (static_cast<string>(p) == encoded_col) {
-                p.frequency++;
-                aln.num_sites++;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            aln.addPattern(encoded_col, 1);
-        }
+    // Convert map to patterns
+    for (const auto& [pattern_str, freq] : pattern_map) {
+        aln.addPattern(pattern_str, freq);
     }
 
     infile.close();
