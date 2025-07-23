@@ -39,6 +39,8 @@ set(SRC
         tree/LikelihoodCalculator.cpp
         tree/LikelihoodCalculator.h
         helper/MatrixOpDispatcher.h
+        helper/logger/Logger.cpp
+        helper/logger/Logger.h
 )
 ######################################################
 # setup compilers
