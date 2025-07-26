@@ -6,6 +6,7 @@
 #define POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPOPENMPGPU_H
 
 #include "MatrixOp.h"
+#include <omp.h>
 
 class MatrixOpOpenMPGPU: public MatrixOp {
 public:

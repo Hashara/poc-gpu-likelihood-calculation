@@ -38,11 +38,11 @@ set(SRC
         model/ModelJC.h
         tree/LikelihoodCalculator.cpp
         tree/LikelihoodCalculator.h
+
         helper/MatrixOpDispatcher.h
+
         helper/logger/Logger.cpp
         helper/logger/Logger.h
-        helper/MatrixOpOpenMPGPU.cpp
-        helper/MatrixOpOpenMPGPU.h
 )
 ######################################################
 # setup compilers
