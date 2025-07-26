@@ -4,7 +4,6 @@
 
 
 #include "Matrix.h"
-#include "MatrixOpDispatcher.h"
 
 #ifdef USE_EIGEN
 #include <Eigen/Dense>
@@ -19,6 +18,8 @@ Matrix hadamard(const Matrix& A, const Matrix& B) {
 }
 
 #else
+#include "MatrixOpDispatcher.h"
+
 // set default MatrixOpType
 MatrixOpType Matrix::m_opType = MatrixOpType::CPU;
 

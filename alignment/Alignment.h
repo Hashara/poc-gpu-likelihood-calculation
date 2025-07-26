@@ -46,9 +46,6 @@ public:
      */
     void addPattern(const string& pattern_str, int freq = 1) {
         patterns.emplace_back(pattern_str, freq);
-        if (!pattern_str.empty()) {
-            num_sites += freq;
-        }
     }
 
     /**

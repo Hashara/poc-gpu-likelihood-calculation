@@ -39,6 +39,8 @@ set(SRC
         tree/LikelihoodCalculator.cpp
         tree/LikelihoodCalculator.h
         helper/MatrixOpDispatcher.h
+        helper/logger/Logger.cpp
+        helper/logger/Logger.h
 )
 ######################################################
 # setup compilers
@@ -112,11 +114,10 @@ if (USE_EIGEN)
         find_package(Eigen3)
         if(NOT EIGEN3_FOUND)
             message(FATAL_ERROR "Eigen3 library not found. Either install it or rerun cmake with -DEIGEN3_INCLUDE_DIR=<installed_eigen3_dir>")
-        else()
-            add_definitions(-DUSE_EIGEN)
         endif()
     endif()
     add_definitions(-I${EIGEN3_INCLUDE_DIR})
+    add_definitions(-DUSE_EIGEN)
 else()
     message("Eigen3        : NONE")
     list(APPEND SRC
