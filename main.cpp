@@ -74,6 +74,14 @@ int main(int argc, char *argv[]) {
         MatrixOpType opType = MatrixOpType::OPENACC;
         logInfo("Using OpenACC for matrix operations.");
         std::cout << "Using OpenACC for matrix operations." << std::endl;
+#elif defined USE_OPEMMP_GPU
+        MatrixOpType opType = MatrixOpType::OPENMP_GPU;
+        logInfo("Using OpenMP GPU for matrix operations.");
+        std::cout << "Using OpenMP GPU for matrix operations." << std::endl;
+#elif defined USE_CUBLAS
+        MatrixOpType opType = MatrixOpType::CUBLAS;
+        logInfo("Using cuBLAS for matrix operations.");
+        std::cout << "Using cuBLAS for matrix operations." << std::endl;
 #elif defined USE_EIGEN
         logInfo("Using Eigen for matrix operations.");
         cout << "Using Eigen for matrix operations." << std::endl;
