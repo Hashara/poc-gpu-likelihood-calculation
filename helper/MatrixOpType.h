@@ -10,7 +10,8 @@ enum class MatrixOpType {
     EIGEN,
     CUBLAS,
     CUDA_KERNEL,
-    OPENACC
+    OPENACC,
+    OPENMP_GPU,
 };
 
 #endif //POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPTYPE_H
