@@ -1,0 +1,4 @@
+
+cmake -DCMAKE_CXX_FLAGS="$LDFLAGS $CPPFLAGS" -_DUSE_EIGEN=ON  ..
+
+make -j
