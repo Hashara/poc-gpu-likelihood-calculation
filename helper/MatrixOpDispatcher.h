@@ -14,6 +14,8 @@
 
 #ifdef USE_OPENACC
 #include "MatrixOpOpenACC.h"
+#elif defined(USE_CUBLAS)
+#include "MatrixOpCuBLAS.h"
 #endif
 
 // Function to return a backend singleton based on MatrixOpType
@@ -26,6 +28,11 @@ inline MatrixOp* getBackend(MatrixOpType type) {
 #ifdef USE_OPENACC
             case MatrixOpType::OPENACC: {
             static MatrixOpOpenACC op;
+            return &op;
+        }
+#elif defined(USE_CUBLAS)
+        case MatrixOpType::CUBLAS: {
+            static MatrixOpCuBLAS op;
             return &op;
         }
 #endif

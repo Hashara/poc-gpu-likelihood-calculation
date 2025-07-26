@@ -41,6 +41,8 @@ set(SRC
         helper/MatrixOpDispatcher.h
         helper/logger/Logger.cpp
         helper/logger/Logger.h
+        helper/MatrixOpOpenMPGPU.cpp
+        helper/MatrixOpOpenMPGPU.h
 )
 ######################################################
 # setup compilers
@@ -79,6 +81,30 @@ else()
 endif()
 
 ##################################################################
+# configure OpenMP GPU compilation
+##################################################################
+if (USE_OPENMP_GPU)
+    message("OpenMP GPU    : Yes")
+    if (GCC)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda")
+        list(APPEND SRC
+                helper/MatrixOpOpenMPGPU.cpp
+                helper/MatrixOpOpenMPGPU.h
+        )
+    elseif (NVHPC)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mp=gpu")
+        list(APPEND SRC
+                helper/MatrixOpOpenMPGPU.cpp
+                helper/MatrixOpOpenMPGPU.h
+        )
+    else()
+        message(FATAL_ERROR "OpenMP GPU requires GCC or NVHPC compiler support. Enable with -DUSE_OPENMP_GPU=ON")
+    endif()
+else()
+    message("OpenMP GPU    : NONE")
+endif ()
+
+##################################################################
 # configure CUBLAS
 ##################################################################
 
@@ -91,8 +117,8 @@ if (USE_CUBLAS)
             include_directories(${CUDA_INCLUDE_DIRS})
             link_directories(${CUDA_LIBRARY_DIRS})
             list(APPEND SRC
-                    helper/MatrixOpCUBLAS.cpp
-                    helper/MatrixOpCUBLAS.h
+                    helper/MatrixOpCuBLAS.cpp
+                    helper/MatrixOpCuBLAS.h
             )
         else()
             message(FATAL_ERROR "CUDA not found. Either install it or rerun cmake with -DCUDA_ROOT=<installed_cuda_dir>")
