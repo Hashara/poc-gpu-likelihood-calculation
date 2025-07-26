@@ -71,15 +71,15 @@ int main(int argc, char *argv[]) {
 
 
 #ifdef USE_OPENACC
-        MatrixOpType opType = MatrixOpType::OPENACC;
+        opType = MatrixOpType::OPENACC;
         logInfo("Using OpenACC for matrix operations.");
         std::cout << "Using OpenACC for matrix operations." << std::endl;
 #elif defined USE_OPENMP_GPU
-        MatrixOpType opType = MatrixOpType::OPENMP_GPU;
+        opType = MatrixOpType::OPENMP_GPU;
         logInfo("Using OpenMP GPU for matrix operations.");
         std::cout << "Using OpenMP GPU for matrix operations." << std::endl;
 #elif defined USE_CUBLAS
-        MatrixOpType opType = MatrixOpType::CUBLAS;
+        opType = MatrixOpType::CUBLAS;
         logInfo("Using cuBLAS for matrix operations.");
         std::cout << "Using cuBLAS for matrix operations." << std::endl;
 #elif defined USE_EIGEN

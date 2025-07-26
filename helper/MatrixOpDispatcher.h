@@ -16,6 +16,8 @@
 #include "MatrixOpOpenACC.h"
 #elif defined(USE_CUBLAS)
 #include "MatrixOpCuBLAS.h"
+#elif defined(USE_OPENMP_GPU)
+#include "MatrixOpOpenMPGPU.h"
 #endif
 
 // Function to return a backend singleton based on MatrixOpType
@@ -33,6 +35,11 @@ inline MatrixOp* getBackend(MatrixOpType type) {
 #elif defined(USE_CUBLAS)
         case MatrixOpType::CUBLAS: {
             static MatrixOpCuBLAS op;
+            return &op;
+        }
+#elif defined(USE_OPENMP_GPU)
+        case MatrixOpType::OPENMP_GPU: {
+            static MatrixOpOpenMPGPU op;
             return &op;
         }
 #endif
