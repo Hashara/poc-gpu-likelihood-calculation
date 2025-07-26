@@ -85,6 +85,7 @@ endif()
 ##################################################################
 if (USE_OPENMP_GPU)
     message("OpenMP GPU    : Yes")
+    add_definitions(-DUSE_OPENMP_GPU)
     if (GCC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda")
         list(APPEND SRC
