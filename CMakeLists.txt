@@ -61,21 +61,17 @@ endif ()
 ##################################################################
 # configure OpenACC compilation
 ##################################################################
-if (USE_OPENACC STREQUAL "ON")
+if (USE_OPENACC)
     message("OpenACC       : Yes")
     add_definitions(-DUSE_OPENACC)
+    list(APPEND SRC
+            helper/MatrixOpOpenACC.cpp
+            helper/MatrixOpOpenACC.h
+    )
     if (GCC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenacc")
-        list(APPEND SRC
-                helper/MatrixOpOpenACC.cpp
-                helper/MatrixOpOpenACC.h
-        )
     elseif (NVHPC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc")
-        list(APPEND SRC
-                helper/MatrixOpOpenACC.cpp
-                helper/MatrixOpOpenACC.h
-        )
     endif()
 else()
     message("OpenACC       : NONE")

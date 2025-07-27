@@ -28,7 +28,7 @@ for TAXA_DIR in "$DATASET_DIR"{4,100,500,1000,10000}taxa; do
                 
                 if [ -f "$executable_path" ]; then
                     echo "Running test for length: $length with $type"
-                    $executable_path -s alignment_{$length}.phy -te tree.nwk -prefix output_${taxa_size}_${length}_${type}.txt
+                    $executable_path -s alignment_${length}.phy -te tree.nwk -prefix output_${taxa_size}_${length}_${type}.txt
 
                     if [ $? -ne 0 ]; then
                         echo "run failed for length: $length with $type for $taxa_size taxa"
