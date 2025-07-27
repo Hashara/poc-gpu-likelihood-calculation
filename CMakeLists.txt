@@ -63,6 +63,7 @@ endif ()
 ##################################################################
 if (USE_OPENACC STREQUAL "ON")
     message("OpenACC       : Yes")
+    add_definitions(-DUSE_OPENACC)
     if (GCC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenacc")
         list(APPEND SRC
