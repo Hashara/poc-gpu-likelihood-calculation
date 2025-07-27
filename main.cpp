@@ -104,7 +104,11 @@ int main(int argc, char *argv[]) {
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
 
-        logResult("CPU", aln.getNSeq(), aln.getNSites(), aln.patterns.size(), elapsed.count(), logLikelihood);
+#ifdef USE_EIGEN
+        logResult("EIGEN", aln.getNSeq(), aln.getNSites(), aln.patterns.size(), elapsed.count(), logLikelihood);
+#else
+        logResult(toString(opType), aln.getNSeq(), aln.getNSites(), aln.patterns.size(), elapsed.count(), logLikelihood);
+#endif
         std::cout << std::setprecision(18) << "Log-likelihood: " << logLikelihood << std::endl;
         std::cout << "Time taken: " << elapsed.count() << " seconds" << std::endl;
 //        // Cleanup
