@@ -1,7 +1,8 @@
 #!/bin/bash
 
 lengths=(100 1000 10000 100000 1000000)
-executable_type=("cpu" "eigen" "openacc")
+executable_type=("openmp_gpu" "openacc")
+#executable_type=("eigen" "cpu")
 tree_file="tree.nwk"
 DATASET_DIR="test_data/"
 
@@ -27,7 +28,7 @@ for TAXA_DIR in "$DATASET_DIR"{4,100,500,1000,10000}taxa; do
                 
                 if [ -f "$executable_path" ]; then
                     echo "Running test for length: $length with $type"
-                    $executable_path -s alignment_100.phy -te tree.nwk -prefix output_${taxa_size}taxa_${length}_${type}.txt
+                    $executable_path -s alignment_{$length}.phy -te tree.nwk -prefix output_${taxa_size}_${length}_${type}.txt
 
                     if [ $? -ne 0 ]; then
                         echo "run failed for length: $length with $type for $taxa_size taxa"
