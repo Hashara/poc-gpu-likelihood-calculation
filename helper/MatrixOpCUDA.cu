@@ -3,6 +3,7 @@
 //
 
 #include "MatrixOpCUDA.cuh"
+#include "MatrixKernels.cuh"
 #include <cuda_runtime.h>
 
 __global__ void matMulKernel(const double* A, const double* B, double* C, int M, int N, int P) {
@@ -60,13 +61,6 @@ Matrix MatrixOpCUDA::multiply(const Matrix& A, const Matrix& B) {
     return C;
 }
 
-__global__ void hadamardKernel(const double* A, const double* B, double* C, int size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        C[idx] = A[idx] * B[idx];
-    }
-}
-
 Matrix MatrixOpCUDA::hadamard(const Matrix& A, const Matrix& B) {
     if (A.rows() != B.rows() || A.cols() != B.cols()) {
         throw std::invalid_argument("Matrix dimensions do not match for Hadamard product.");
@@ -93,9 +87,7 @@ Matrix MatrixOpCUDA::hadamard(const Matrix& A, const Matrix& B) {
 
     // launch the kernel
     int blockSize = 256; // 256 threads per block is a common choice
-    int gridSize = (size + blockSize - 1) / blockSize; // calculate number of blocks needed
-    hadamardKernel<<<gridSize, blockSize>>>(d_A, d_B, d_C, size);
-
+    launchHadamard(d_A, d_B, d_C, size, blockSize);
     // copy the result back to host
     cudaMemcpy(h_C, d_C, size * sizeof(double), cudaMemcpyDeviceToHost);
 

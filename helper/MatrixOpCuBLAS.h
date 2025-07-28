@@ -6,11 +6,16 @@
 #define POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPCUBLAS_H
 
 #include "MatrixOp.h"
+#include <cublas_v2.h>
 
 class MatrixOpCuBLAS : public MatrixOp {
 public:
+    MatrixOpCuBLAS();
+    ~MatrixOpCuBLAS() override;
     Matrix multiply(const Matrix& A, const Matrix& B) override;
     Matrix hadamard(const Matrix& A, const Matrix& B) override;
+private:
+    cublasHandle_t handle;
 };
 
 

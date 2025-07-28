@@ -112,9 +112,13 @@ if (USE_CUDA)
     list(APPEND SRC
             helper/MatrixOpCUDA.cu
             helper/MatrixOpCUDA.cuh
+
+            helper/MatrixKernels.cu
+            helper/MatrixKernels.cuh
     )
     enable_language(CUDA)
     set_source_files_properties(helper/MatrixOpCUDA.cu PROPERTIES LANGUAGE CUDA)
+    set_source_files_properties(helper/MatrixKernels.cu PROPERTIES LANGUAGE CUDA)
 
     if (NVHPC)
         find_package(CUDA REQUIRED)
@@ -142,12 +146,16 @@ endif ()
 
 if (USE_CUBLAS)
     message("CUBLAS        : Yes")
+    add_definitions(-DUSE_CUBLAS)
     if (NVHPC)
         find_package(CUDA REQUIRED)
         if (CUDA_FOUND)
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_CUBLAS")
             include_directories(${CUDA_INCLUDE_DIRS})
             link_directories(${CUDA_LIBRARY_DIRS})
+
+            find_package(CUDAToolkit REQUIRED)
+
             list(APPEND SRC
                     helper/MatrixOpCuBLAS.cpp
                     helper/MatrixOpCuBLAS.h
@@ -187,8 +195,12 @@ endif ()
 
 add_executable(gpulcal ${SRC})
 
+if (USE_CUBLAS)
+    target_link_libraries(gpulcal PRIVATE CUDA::cublas CUDA::cudart)
+endif ()
 
-##################################################################
+
+    ##################################################################
 # Include the test library
 ##################################################################
 option(USE_GTEST "Use Google Test library (gtest)" OFF)
