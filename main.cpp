@@ -78,10 +78,14 @@ int main(int argc, char *argv[]) {
         opType = MatrixOpType::OPENMP_GPU;
         logInfo("Using OpenMP GPU for matrix operations.");
         std::cout << "Using OpenMP GPU for matrix operations." << std::endl;
-#elif defined USE_CUBLAS
+#elif defined USE_CUBLAS && defined USE_CUDA
         opType = MatrixOpType::CUBLAS;
         logInfo("Using cuBLAS for matrix operations.");
         std::cout << "Using cuBLAS for matrix operations." << std::endl;
+#elif defined USE_CUDA
+        opType = MatrixOpType::CUDA_KERNEL;
+        logInfo("Using CUDA for matrix operations.");
+        std::cout << "Using CUDA for matrix operations." << std::endl;
 #elif defined USE_EIGEN
         logInfo("Using Eigen for matrix operations.");
         cout << "Using Eigen for matrix operations." << std::endl;

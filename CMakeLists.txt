@@ -43,6 +43,7 @@ set(SRC
 
         helper/logger/Logger.cpp
         helper/logger/Logger.h
+        helper/logger/Logger.h
 )
 ######################################################
 # setup compilers
@@ -100,6 +101,39 @@ if (USE_OPENMP_GPU)
     endif()
 else()
     message("OpenMP GPU    : NONE")
+endif ()
+
+##################################################################
+# configure CUDA
+##################################################################
+if (USE_CUDA)
+    message("CUDA          : Yes")
+    add_definitions(-DUSE_CUDA)
+    list(APPEND SRC
+            helper/MatrixOpCUDA.cu
+            helper/MatrixOpCUDA.cuh
+    )
+    enable_language(CUDA)
+    set_source_files_properties(helper/MatrixOpCUDA.cu PROPERTIES LANGUAGE CUDA)
+
+    if (NVHPC)
+        find_package(CUDA REQUIRED)
+        if (CUDA_FOUND)
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_CUDA")
+            include_directories(${CUDA_INCLUDE_DIRS})
+            link_directories(${CUDA_LIBRARY_DIRS})
+#            list(APPEND SRC
+#                    helper/MatrixOpCUDA.cu
+#                    helper/MatrixOpCUDA.cuh
+#            )
+        else()
+            message(FATAL_ERROR "CUDA not found. Either install it or rerun cmake with -DCUDA_ROOT=<installed_cuda_dir>")
+        endif()
+    else()
+        message(FATAL_ERROR "CUDA requires NVHPC compiler support")
+    endif()
+else()
+    message("CUDA          : NONE")
 endif ()
 
 ##################################################################
