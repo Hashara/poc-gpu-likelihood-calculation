@@ -14,6 +14,12 @@
 
 #ifdef USE_OPENACC
 #include "MatrixOpOpenACC.h"
+#elif defined(USE_CUBLAS) && defined(USE_CUDA)
+#include "MatrixOpCuBLAS.h"
+#elif defined(USE_CUDA)
+#include "MatrixOpCUDA.cuh"
+#elif defined(USE_OPENMP_GPU)
+#include "MatrixOpOpenMPGPU.h"
 #endif
 
 // Function to return a backend singleton based on MatrixOpType
@@ -26,6 +32,21 @@ inline MatrixOp* getBackend(MatrixOpType type) {
 #ifdef USE_OPENACC
             case MatrixOpType::OPENACC: {
             static MatrixOpOpenACC op;
+            return &op;
+        }
+#elif defined(USE_CUBLAS) && defined(USE_CUDA)
+        case MatrixOpType::CUBLAS: {
+            static MatrixOpCuBLAS op;
+            return &op;
+        }
+#elif defined(USE_CUDA)
+        case MatrixOpType::CUDA_KERNEL: {
+            static MatrixOpCUDA op;
+            return &op;
+        }
+#elif defined(USE_OPENMP_GPU)
+        case MatrixOpType::OPENMP_GPU: {
+            static MatrixOpOpenMPGPU op;
             return &op;
         }
 #endif

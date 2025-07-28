@@ -38,8 +38,11 @@ set(SRC
         model/ModelJC.h
         tree/LikelihoodCalculator.cpp
         tree/LikelihoodCalculator.h
+
         helper/MatrixOpDispatcher.h
+
         helper/logger/Logger.cpp
+        helper/logger/Logger.h
         helper/logger/Logger.h
 )
 ######################################################
@@ -59,24 +62,83 @@ endif ()
 ##################################################################
 # configure OpenACC compilation
 ##################################################################
-if (USE_OPENACC STREQUAL "ON")
+if (USE_OPENACC)
     message("OpenACC       : Yes")
+    add_definitions(-DUSE_OPENACC)
+    list(APPEND SRC
+            helper/MatrixOpOpenACC.cpp
+            helper/MatrixOpOpenACC.h
+    )
     if (GCC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenacc")
-        list(APPEND SRC
-                helper/MatrixOpOpenACC.cpp
-                helper/MatrixOpOpenACC.h
-        )
     elseif (NVHPC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc")
-        list(APPEND SRC
-                helper/MatrixOpOpenACC.cpp
-                helper/MatrixOpOpenACC.h
-        )
     endif()
 else()
     message("OpenACC       : NONE")
 endif()
+
+##################################################################
+# configure OpenMP GPU compilation
+##################################################################
+if (USE_OPENMP_GPU)
+    message("OpenMP GPU    : Yes")
+    add_definitions(-DUSE_OPENMP_GPU)
+    if (GCC)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda")
+        list(APPEND SRC
+                helper/MatrixOpOpenMPGPU.cpp
+                helper/MatrixOpOpenMPGPU.h
+        )
+    elseif (NVHPC)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mp=gpu")
+        list(APPEND SRC
+                helper/MatrixOpOpenMPGPU.cpp
+                helper/MatrixOpOpenMPGPU.h
+        )
+    else()
+        message(FATAL_ERROR "OpenMP GPU requires GCC or NVHPC compiler support. Enable with -DUSE_OPENMP_GPU=ON")
+    endif()
+else()
+    message("OpenMP GPU    : NONE")
+endif ()
+
+##################################################################
+# configure CUDA
+##################################################################
+if (USE_CUDA)
+    message("CUDA          : Yes")
+    add_definitions(-DUSE_CUDA)
+    list(APPEND SRC
+            helper/MatrixOpCUDA.cu
+            helper/MatrixOpCUDA.cuh
+
+            helper/MatrixKernels.cu
+            helper/MatrixKernels.cuh
+    )
+    enable_language(CUDA)
+    set_source_files_properties(helper/MatrixOpCUDA.cu PROPERTIES LANGUAGE CUDA)
+    set_source_files_properties(helper/MatrixKernels.cu PROPERTIES LANGUAGE CUDA)
+
+    if (NVHPC)
+        find_package(CUDA REQUIRED)
+        if (CUDA_FOUND)
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_CUDA")
+            include_directories(${CUDA_INCLUDE_DIRS})
+            link_directories(${CUDA_LIBRARY_DIRS})
+#            list(APPEND SRC
+#                    helper/MatrixOpCUDA.cu
+#                    helper/MatrixOpCUDA.cuh
+#            )
+        else()
+            message(FATAL_ERROR "CUDA not found. Either install it or rerun cmake with -DCUDA_ROOT=<installed_cuda_dir>")
+        endif()
+    else()
+        message(FATAL_ERROR "CUDA requires NVHPC compiler support")
+    endif()
+else()
+    message("CUDA          : NONE")
+endif ()
 
 ##################################################################
 # configure CUBLAS
@@ -84,15 +146,19 @@ endif()
 
 if (USE_CUBLAS)
     message("CUBLAS        : Yes")
+    add_definitions(-DUSE_CUBLAS)
     if (NVHPC)
         find_package(CUDA REQUIRED)
         if (CUDA_FOUND)
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_CUBLAS")
             include_directories(${CUDA_INCLUDE_DIRS})
             link_directories(${CUDA_LIBRARY_DIRS})
+
+            find_package(CUDAToolkit REQUIRED)
+
             list(APPEND SRC
-                    helper/MatrixOpCUBLAS.cpp
-                    helper/MatrixOpCUBLAS.h
+                    helper/MatrixOpCuBLAS.cpp
+                    helper/MatrixOpCuBLAS.h
             )
         else()
             message(FATAL_ERROR "CUDA not found. Either install it or rerun cmake with -DCUDA_ROOT=<installed_cuda_dir>")
@@ -129,8 +195,12 @@ endif ()
 
 add_executable(gpulcal ${SRC})
 
+if (USE_CUBLAS)
+    target_link_libraries(gpulcal PRIVATE CUDA::cublas CUDA::cudart)
+endif ()
 
-##################################################################
+
+    ##################################################################
 # Include the test library
 ##################################################################
 option(USE_GTEST "Use Google Test library (gtest)" OFF)

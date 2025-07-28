@@ -71,9 +71,21 @@ int main(int argc, char *argv[]) {
 
 
 #ifdef USE_OPENACC
-        MatrixOpType opType = MatrixOpType::OPENACC;
+        opType = MatrixOpType::OPENACC;
         logInfo("Using OpenACC for matrix operations.");
         std::cout << "Using OpenACC for matrix operations." << std::endl;
+#elif defined USE_OPENMP_GPU
+        opType = MatrixOpType::OPENMP_GPU;
+        logInfo("Using OpenMP GPU for matrix operations.");
+        std::cout << "Using OpenMP GPU for matrix operations." << std::endl;
+#elif defined USE_CUBLAS && defined USE_CUDA
+        opType = MatrixOpType::CUBLAS;
+        logInfo("Using cuBLAS for matrix operations.");
+        std::cout << "Using cuBLAS for matrix operations." << std::endl;
+#elif defined USE_CUDA
+        opType = MatrixOpType::CUDA_KERNEL;
+        logInfo("Using CUDA for matrix operations.");
+        std::cout << "Using CUDA for matrix operations." << std::endl;
 #elif defined USE_EIGEN
         logInfo("Using Eigen for matrix operations.");
         cout << "Using Eigen for matrix operations." << std::endl;
@@ -96,7 +108,11 @@ int main(int argc, char *argv[]) {
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
 
-        logResult("CPU", aln.getNSeq(), aln.getNSites(), aln.patterns.size(), elapsed.count(), logLikelihood);
+#ifdef USE_EIGEN
+        logResult("EIGEN", aln.getNSeq(), aln.getNSites(), aln.patterns.size(), elapsed.count(), logLikelihood);
+#else
+        logResult(toString(opType), aln.getNSeq(), aln.getNSites(), aln.patterns.size(), elapsed.count(), logLikelihood);
+#endif
         std::cout << std::setprecision(18) << "Log-likelihood: " << logLikelihood << std::endl;
         std::cout << "Time taken: " << elapsed.count() << " seconds" << std::endl;
 //        // Cleanup
