@@ -85,6 +85,11 @@ Matrix Matrix::hadamard(const Matrix &other) const {
     return getBackend(m_opType)->hadamard(*this, other);
 }
 
+#ifdef USE_OPENACC
+Matrix Matrix::compositeHadamard(const Matrix &B, const Matrix &C, const Matrix &D) const {
+    return getBackend(m_opType)->compositehadamard(*this, B, C, D);
+}
+#endif
 void Matrix::setMOpType(MatrixOpType mOpType) {
     m_opType = mOpType;
 }

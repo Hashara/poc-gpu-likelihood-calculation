@@ -9,6 +9,8 @@ option(USE_CUBLAS   "Enable CUBLAS support" OFF)
 option(USE_OPENMP_GPU "Enable OpenMP GPU support" OFF)
 option(USE_EIGEN "Use Eigen3 library" OFF)
 
+option(PROFILE "Enable profiling" OFF)
+
 set(SRC
         main.cpp
         helper/Matrix.cpp
@@ -57,6 +59,10 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "NVHPC") # NVIDIA HPC SDK compiler
     message("Compiler      : NVIDIA HPC SDK Compiler (nvc++)")
     set(NVHPC "TRUE")
     add_definitions(-DUSE_NVHPC)
+
+    if (PROFILE AND USE_OPENACC)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc -gpu=cc70,debug -Minfo=accel")
+    endif ()
 endif ()
 
 ##################################################################

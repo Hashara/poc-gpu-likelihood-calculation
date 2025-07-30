@@ -4,6 +4,7 @@
 
 #include "LikelihoodCalculator.h"
 #include <cmath>
+#define COMPOSITE_HADAMARD
 
 LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model) {
     tree_ = tree;
@@ -65,6 +66,7 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
     Matrix P1 = model_->getTransitionMatrix(left->branchLength);
     Matrix P2 = model_->getTransitionMatrix(right->branchLength);
 
+#if !defined(COMPOSITE_HADAMARD) || !defined(USE_OPENACC)
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;
 
@@ -72,6 +74,9 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
     node->partialLikelihood = hadamard(PL1, PL2);
 #else
     node->partialLikelihood = PL1.hadamard(PL2);
+#endif
+#else
+    node ->partialLikelihood = P1.compositeHadamard(L1, P2, L2);
 #endif
     node->isPartialLikelihoodCalculated = true;
 }
@@ -89,7 +94,7 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
 
     Matrix P1 = model_->getTransitionMatrix(left->branchLength);
     Matrix P2 = model_->getTransitionMatrix(right->branchLength);
-
+#if !defined(COMPOSITE_HADAMARD) || !defined(USE_OPENACC)
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;
 
@@ -97,6 +102,9 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
     node->partialLikelihood = hadamard(PL1, PL2);
 #else
     node->partialLikelihood = PL1.hadamard(PL2);
+#endif
+#else
+    node ->partialLikelihood = P1.compositeHadamard(L1, P2, L2);
 #endif
     node->completedPackets.insert(packet_id);
 

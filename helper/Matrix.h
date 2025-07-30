@@ -65,6 +65,10 @@ public:
      */
     Matrix hadamard(const Matrix& other) const;
 
+#ifdef USE_OPENACC
+    Matrix compositeHadamard(const Matrix& B, const Matrix& C, const Matrix& D) const;
+#endif
+
 private:
     size_t m_rows, m_cols;
     double* m_data;
