@@ -263,6 +263,29 @@ double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL) 
     Matrix baseFrequencies = model_->getBaseFrequencies();
     Matrix siteLikelihoods = baseFrequencies * rootL;
 
+#ifdef USE_OPENACC
+
+
+    // Extract a flat pointer to siteLikelihoods (assuming row-major)
+    double* sl = siteLikelihoods.data();
+
+    //  Precompute frequencies to avoid GPU accessing aln_
+    int *freqData = new int[numPatterns];
+    for (int j = 0; j < numPatterns; ++j) {
+        freqData[j] = aln_->patterns[j].frequency;
+    }
+
+    #pragma acc enter data copyin(sl[0:numPatterns], freqData[0:numPatterns])
+
+    #pragma acc parallel loop reduction(+:logL) present(sl[0:numPatterns], freqData[0:numPatterns])
+    for (int j = 0; j < numPatterns; ++j) {
+        double siteLikelihood = sl[j];  // 1-row matrix, first row
+        logL += freqData[j] * std::log(siteLikelihood);
+    }
+
+    #pragma acc exit data delete(sl[0:numPatterns], freqData[0:numPatterns])
+
+#else
     for (int j = 0; j < numPatterns; ++j) {
         double siteLikelihood = siteLikelihoods(0, j);  // Assuming siteLikelihoods is a 1-row matrix
 
@@ -271,6 +294,7 @@ double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL) 
         logL += freq * std::log(siteLikelihood);
 
     }
+#endif
     return logL;
 }
 
