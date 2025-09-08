@@ -68,15 +68,15 @@ Matrix MatrixOpOpenACC::hadamard(const Matrix &A, const Matrix &B) {
 }
 
 
-Matrix MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
-                                          const Matrix &C, const Matrix &D) {
+void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
+                                          const Matrix &C, const Matrix &D, Matrix &R) {
     nvtxRangePushA("MatrixOpOpenACC::compositehadamard");
 
     size_t M = A.rows(), N = A.cols(), P = B.cols();
 
     Matrix R1(M, P);
     Matrix R2(M, P);
-    Matrix R(M, P);
+    R.resize(M, P);
 
     const double *a = A.data();
     const double *b = B.data();
@@ -133,6 +133,6 @@ Matrix MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
     }
 
     nvtxRangePop();
-    return R;
+//    return R;
 }
 

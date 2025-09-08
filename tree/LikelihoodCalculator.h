@@ -23,7 +23,8 @@ public:
 
     void traverseAndComputeBounded(Node* node, size_t start, size_t end, int packet_id);
 
-    Matrix buildTipLikelihood(const std::string& taxonName);
+//    Matrix buildTipLikelihood(const std::string& taxonName);
+    void buildTipLikelihood(Node* node);
 
     Matrix buildTipLikelihoodBounded(const std::string& taxonName, size_t start, size_t end, int packet_id);
 

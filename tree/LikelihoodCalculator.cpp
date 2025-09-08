@@ -20,26 +20,29 @@ LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *mo
 
 /**
  * Build the one-hot likelihood matrix for a tip (leaf) node
- * @param taxonName
- * @return Matrix
+ * @param node
+ * @return
  */
-Matrix LikelihoodCalculator::buildTipLikelihood(const std::string &taxonName) {
+void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     int numStates = 4;
     int numPatterns = aln_->patterns.size();
 
     int taxonIndex = -1;
     for (size_t i = 0; i < aln_->seq_names.size(); ++i) {
-        if (aln_->seq_names[i] == taxonName) {
+        if (aln_->seq_names[i] == node->name) {
             taxonIndex = static_cast<int>(i);
             break;
         }
     }
 
     if (taxonIndex == -1) {
-        throw std::runtime_error("Taxon name not found in alignment: " + taxonName);
+        throw std::runtime_error("Taxon name not found in alignment: " + node->name);
     }
 
-    Matrix L(numStates, numPatterns);
+    node->partialLikelihood.resize(numStates, numPatterns);
+
+    Matrix& L = node->partialLikelihood;
+//    node->partialLikelihood(numStates, numPatterns);
     for (int p = 0; p < numPatterns; ++p) {
         int state = (*aln_).patterns[p][taxonIndex] - '0';
         for (int s = 0; s < numStates; ++s) {
@@ -52,7 +55,7 @@ Matrix LikelihoodCalculator::buildTipLikelihood(const std::string &taxonName) {
 
     cout << L << endl;
 #endif
-    return L;
+    node->isPartialLikelihoodCalculated = true;
 }
 
 /**
@@ -62,8 +65,7 @@ Matrix LikelihoodCalculator::buildTipLikelihood(const std::string &taxonName) {
 void LikelihoodCalculator::computeTipLikelihood(Node *node) {
     if (!node->isLeaf()) return;
 
-    node->partialLikelihood = buildTipLikelihood(node->name);
-    node->isPartialLikelihoodCalculated = true;
+    buildTipLikelihood(node);
 }
 
 /**
@@ -94,7 +96,7 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
     node->partialLikelihood = PL1.hadamard(PL2);
 #endif
 #else
-    node ->partialLikelihood = P1.compositeHadamard(L1, P2, L2);
+    P1.compositeHadamard(L1, P2, L2, node->partialLikelihood);
 #endif
     node->isPartialLikelihoodCalculated = true;
 }
@@ -127,7 +129,7 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
     node->partialLikelihood = PL1.hadamard(PL2);
 #endif
 #else
-    node ->partialLikelihood = P1.compositeHadamard(L1, P2, L2);
+    P1.compositeHadamard(L1, P2, L2, node ->partialLikelihood);
 #endif
     node->completedPackets.insert(packet_id);
 

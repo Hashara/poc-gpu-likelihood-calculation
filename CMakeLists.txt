@@ -62,6 +62,8 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "NVHPC") # NVIDIA HPC SDK compiler
 
     if (PROFILE AND USE_OPENACC)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc -gpu=cc70,debug -Minfo=accel")
+    elseif (USE_OPENACC)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc -gpu=cc70 -Minfo=accel")
     endif ()
 endif ()
 

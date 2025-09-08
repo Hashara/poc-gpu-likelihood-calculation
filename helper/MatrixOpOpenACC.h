@@ -12,7 +12,7 @@ public:
     Matrix multiply(const Matrix& A, const Matrix& B) override;
     Matrix hadamard(const Matrix& A, const Matrix& B) override;
 #ifdef USE_OPENACC
-    Matrix compositehadamard(const Matrix& A, const Matrix& B, const Matrix& C, const Matrix& D) override;
+    void compositehadamard(const Matrix& A, const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R) override;
 #endif // USE_OPENACC
 };
 
