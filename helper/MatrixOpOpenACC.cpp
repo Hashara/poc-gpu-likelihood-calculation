@@ -96,6 +96,7 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
     // One data region for all matrices
 //#pragma acc data copyin(a[0:Asz], b[0:Bsz], c[0:Asz], d[0:Bsz]) \
 //                     create(r1[0:Csz], r2[0:Csz]) copyout(r[0:Csz])
+/*
 #pragma acc data present(b[0:Bsz], d[0:Bsz], r[0:Csz], a[0:Asz], c[0:Asz]) \
                      create(r1[0:Csz], r2[0:Csz])
     {
@@ -136,6 +137,29 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
             }
         }
     }
+*/
+
+// Single kernel for both multiplications and Hadamard product
+#pragma acc data present(a[0:Asz], b[0:Bsz], c[0:Asz], d[0:Bsz], r[0:Csz])
+    {
+        // One kernel, two dot-products, one write
+#pragma acc parallel loop collapse(2) gang vector vector_length(128)
+        for (size_t i = 0; i < M; ++i) {
+            for (size_t j = 0; j < P; ++j) {
+                double s1 = 0.0, s2 = 0.0;
+
+                // Optional: manual tiling over k for cache reuse (see §2)
+#pragma acc loop seq
+                for (size_t k = 0; k < N; ++k) {
+                    s1 += a[i*N + k] * b[k*P + j];
+                    s2 += c[i*N + k] * d[k*P + j];
+                }
+
+                r[i*P + j] = s1 * s2;
+            }
+        }
+    }
+
 
     nvtxRangePop();
 //    return R;
