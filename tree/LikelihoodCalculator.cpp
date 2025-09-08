@@ -4,6 +4,9 @@
 
 #include "LikelihoodCalculator.h"
 #include <cmath>
+#ifdef USE_OPENACC
+#include <nvtx3/nvToolsExt.h>
+#endif
 #define COMPOSITE_HADAMARD
 
 /**
@@ -50,6 +53,13 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
         }
     }
 
+#ifdef USE_OPENACC
+    nvtxRangePushA("Prepare Tip Likelihood on GPU for leaf");
+    // Move the likelihood matrix to the GPU
+    const double* l = L.data();
+    #pragma acc enter data copyin(l[0:numStates * numPatterns])
+    nvtxRangePop();
+#endif
 #ifdef VERBOSE
     cout << "Tip likelihood for " << taxonName << ":\n";
 
@@ -75,6 +85,7 @@ void LikelihoodCalculator::computeTipLikelihood(Node *node) {
  */
 void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
     if (node->isLeaf()) return;
+    int numStates = 4;
 
     Node *left = node->children[0];
     Node *right = node->children[1];
@@ -83,8 +94,13 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
     const Matrix &L1 = left->partialLikelihood;
     const Matrix &L2 = right->partialLikelihood;
 
-    Matrix P1 = model_->getTransitionMatrix(left->branchLength);
-    Matrix P2 = model_->getTransitionMatrix(right->branchLength);
+//    Matrix P1 = model_->getTransitionMatrix(left->branchLength);
+//    Matrix P2 = model_->getTransitionMatrix(right->branchLength);
+    Matrix P1(numStates, numStates);
+    model_->buildTransitionMatrix(left->branchLength, P1);
+
+    Matrix P2(numStates, numStates);
+    model_->buildTransitionMatrix(right->branchLength, P2);
 
 #if !defined(COMPOSITE_HADAMARD) || !defined(USE_OPENACC)
     Matrix PL1 = P1 * L1;
@@ -119,6 +135,7 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
 
     Matrix P1 = model_->getTransitionMatrix(left->branchLength);
     Matrix P2 = model_->getTransitionMatrix(right->branchLength);
+
 #if !defined(COMPOSITE_HADAMARD) || !defined(USE_OPENACC)
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;

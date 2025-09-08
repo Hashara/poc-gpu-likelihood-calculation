@@ -19,6 +19,7 @@ public:
     // Transition probability matrix P(t)
     Matrix getTransitionMatrix(double t) const override;
 
+    void buildTransitionMatrix(double t, Matrix &P) const override;
 #if defined(USE_EIGEN) && defined(DECOMP)
     Matrix getExpDiagMatrix(double t) const override;
 
