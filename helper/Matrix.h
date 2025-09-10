@@ -44,6 +44,8 @@ public:
 
     void fill(double val);
 
+    void resize(size_t newRows, size_t newCols); // Resizes the matrix, preserving existing data where possible
+
     void fillRandom(unsigned int seed = 0);  // Fills matrix with values in [0, 1]
 
     // use operator loading
@@ -64,6 +66,10 @@ public:
      * @return the Hadamard product of this matrix and the other matrix
      */
     Matrix hadamard(const Matrix& other) const;
+
+#ifdef USE_OPENACC
+    void compositeHadamard(const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R) const;
+#endif
 
 private:
     size_t m_rows, m_cols;

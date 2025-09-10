@@ -29,4 +29,14 @@ inline void printTree(Node* root) {
     }
 }
 
+inline void collectLevels(Node* node, int depth, std::vector<std::vector<Node*>>& levels) {
+    if (!node) return;
+    if (levels.size() <= depth) levels.resize(depth + 1);
+    levels[depth].push_back(node);
+
+    for (Node* child : node->children) {
+        collectLevels(child, depth + 1, levels);
+    }
+}
+
 #endif //POC_GPU_LIKELIHOOD_CALCULATIONS_TREEUTILS_H

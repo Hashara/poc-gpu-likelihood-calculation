@@ -13,6 +13,9 @@ class MatrixOp {
 public:
     virtual Matrix multiply(const Matrix& A, const Matrix& B) = 0;
     virtual Matrix hadamard(const Matrix& A, const Matrix& B) = 0;
+#ifdef USE_OPENACC
+    virtual void compositehadamard(const Matrix& A, const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R) = 0;
+#endif // USE_OPENACC
     virtual ~MatrixOp() = default;
 };
 

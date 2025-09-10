@@ -85,6 +85,22 @@ Matrix Matrix::hadamard(const Matrix &other) const {
     return getBackend(m_opType)->hadamard(*this, other);
 }
 
+
+// New method
+void Matrix::resize(size_t rows, size_t cols) {
+    if (m_data) {
+        delete[] m_data;
+    }
+    m_rows = rows;
+    m_cols = cols;
+    m_data = new double[rows * cols];
+}
+
+#ifdef USE_OPENACC
+void Matrix::compositeHadamard(const Matrix &B, const Matrix &C, const Matrix &D, Matrix& R) const {
+    return getBackend(m_opType)->compositehadamard(*this, B, C, D, R);
+}
+#endif
 void Matrix::setMOpType(MatrixOpType mOpType) {
     m_opType = mOpType;
 }

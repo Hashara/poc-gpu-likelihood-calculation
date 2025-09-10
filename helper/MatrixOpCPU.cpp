@@ -35,3 +35,10 @@ Matrix MatrixOpCPU::hadamard(const Matrix &A, const Matrix &B) {
     }
     return C;
 }
+
+#ifdef USE_OPENACC
+void MatrixOpCPU::compositehadamard(const Matrix &A, const Matrix &B,
+                                       const Matrix &C, const Matrix &D, Matrix &R) {
+    R = hadamard(A * B, C * D);
+}
+#endif // USE_OPENACC

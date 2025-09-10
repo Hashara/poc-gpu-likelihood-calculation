@@ -4,30 +4,48 @@
 
 #include "LikelihoodCalculator.h"
 #include <cmath>
+#ifdef USE_OPENACC
+#include <nvtx3/nvToolsExt.h>
+#endif
+#define COMPOSITE_HADAMARD
 
+/**
+ * Constructor
+ * @param tree
+ * @param aln
+ * @param model
+ */
 LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln, Model *model) {
     tree_ = tree;
     aln_ = aln;
     model_ = model;
 }
 
-Matrix LikelihoodCalculator::buildTipLikelihood(const std::string &taxonName) {
+/**
+ * Build the one-hot likelihood matrix for a tip (leaf) node
+ * @param node
+ * @return
+ */
+void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     int numStates = 4;
     int numPatterns = aln_->patterns.size();
 
     int taxonIndex = -1;
     for (size_t i = 0; i < aln_->seq_names.size(); ++i) {
-        if (aln_->seq_names[i] == taxonName) {
+        if (aln_->seq_names[i] == node->name) {
             taxonIndex = static_cast<int>(i);
             break;
         }
     }
 
     if (taxonIndex == -1) {
-        throw std::runtime_error("Taxon name not found in alignment: " + taxonName);
+        throw std::runtime_error("Taxon name not found in alignment: " + node->name);
     }
 
-    Matrix L(numStates, numPatterns);
+    node->partialLikelihood.resize(numStates, numPatterns);
+
+    Matrix& L = node->partialLikelihood;
+//    node->partialLikelihood(numStates, numPatterns);
     for (int p = 0; p < numPatterns; ++p) {
         int state = (*aln_).patterns[p][taxonIndex] - '0';
         for (int s = 0; s < numStates; ++s) {
@@ -35,25 +53,39 @@ Matrix LikelihoodCalculator::buildTipLikelihood(const std::string &taxonName) {
         }
     }
 
+#ifdef USE_OPENACC
+    nvtxRangePushA("Prepare Tip Likelihood on GPU for leaf");
+    // Move the likelihood matrix to the GPU
+    const double* l = L.data();
+    #pragma acc enter data copyin(l[0:numStates * numPatterns])
+    nvtxRangePop();
+#endif
 #ifdef VERBOSE
     cout << "Tip likelihood for " << taxonName << ":\n";
 
     cout << L << endl;
 #endif
-    return L;
-}
-
-
-void LikelihoodCalculator::computeTipLikelihood(Node *node) {
-    if (!node->isLeaf()) return;
-
-    node->partialLikelihood = buildTipLikelihood(node->name);
     node->isPartialLikelihoodCalculated = true;
 }
 
+/**
+ * Compute the partial likelihood for a tip (leaf) node
+ * @param node
+ */
+void LikelihoodCalculator::computeTipLikelihood(Node *node) {
+    if (!node->isLeaf()) return;
 
+    buildTipLikelihood(node);
+}
+
+/**
+ * Compute the partial likelihood for an internal node
+ * computes L = (P1 * L1) hadamard (P2 * L2)
+ * @param node
+ */
 void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
     if (node->isLeaf()) return;
+    int numStates = 4;
 
     Node *left = node->children[0];
     Node *right = node->children[1];
@@ -62,9 +94,15 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
     const Matrix &L1 = left->partialLikelihood;
     const Matrix &L2 = right->partialLikelihood;
 
-    Matrix P1 = model_->getTransitionMatrix(left->branchLength);
-    Matrix P2 = model_->getTransitionMatrix(right->branchLength);
+//    Matrix P1 = model_->getTransitionMatrix(left->branchLength);
+//    Matrix P2 = model_->getTransitionMatrix(right->branchLength);
+    Matrix P1(numStates, numStates);
+    model_->buildTransitionMatrix(left->branchLength, P1);
 
+    Matrix P2(numStates, numStates);
+    model_->buildTransitionMatrix(right->branchLength, P2);
+
+#if !defined(COMPOSITE_HADAMARD) || !defined(USE_OPENACC)
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;
 
@@ -73,10 +111,18 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
 #else
     node->partialLikelihood = PL1.hadamard(PL2);
 #endif
+#else
+    P1.compositeHadamard(L1, P2, L2, node->partialLikelihood);
+#endif
     node->isPartialLikelihoodCalculated = true;
 }
 
-
+/**
+ * Compute the partial likelihood for an internal node for bounded computation
+ * computes L = (P1 * L1) hadamard (P2 * L2)
+ * @param node
+ * @param packet_id
+ */
 void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int packet_id) {
     if (node->isLeaf()) return;
 
@@ -90,6 +136,7 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
     Matrix P1 = model_->getTransitionMatrix(left->branchLength);
     Matrix P2 = model_->getTransitionMatrix(right->branchLength);
 
+#if !defined(COMPOSITE_HADAMARD) || !defined(USE_OPENACC)
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;
 
@@ -98,10 +145,17 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
 #else
     node->partialLikelihood = PL1.hadamard(PL2);
 #endif
+#else
+    P1.compositeHadamard(L1, P2, L2, node ->partialLikelihood);
+#endif
     node->completedPackets.insert(packet_id);
 
 }
 
+/**
+ * Traverse the tree in post-order and compute partial likelihoods
+ * @param node --> pass the root node here
+ */
 void LikelihoodCalculator::traverseAndCompute(Node *node) {
     // Skip if already computed
     if (node->isPartialLikelihoodCalculated) return;
@@ -119,6 +173,13 @@ void LikelihoodCalculator::traverseAndCompute(Node *node) {
     }
 }
 
+/**
+ * Traverse the tree in post-order and compute partial likelihoods for bounded computation
+ * @param node --> pass the root node here
+ * @param start --> start index of the chunk
+ * @param end --> end index of the chunk
+ * @param packet_id --> id of the current chunk
+ */
 void LikelihoodCalculator::traverseAndComputeBounded(Node *node,
                                                      size_t start, size_t end, int packet_id) {
     // Skip if already computed
@@ -142,6 +203,10 @@ void LikelihoodCalculator::traverseAndComputeBounded(Node *node,
     }
 }
 
+/**
+ * Compute the overall log-likelihood of the tree
+ * @return logL
+ */
 double LikelihoodCalculator::computeLogLikelihood() {
     // Traverse and compute partial likelihoods for all nodes
     double logL = 0.0;
@@ -170,6 +235,12 @@ double LikelihoodCalculator::computeLogLikelihood() {
     return logL;
 }
 
+/**
+ * Divide the alignment into chunks for bounded computation
+ * @param chunkSize Size of each chunk
+ * @param numThreads Number of threads to use
+ * @param limits Vector to store the start and end indices of each chunk
+ */
 void LikelihoodCalculator::computeBound(int chunkSize, int numThreads, vector<size_t> &limits) {
     size_t totalPatterns = aln_->patterns.size();
     size_t numChunks = (totalPatterns + chunkSize - 1) / chunkSize;
@@ -179,6 +250,13 @@ void LikelihoodCalculator::computeBound(int chunkSize, int numThreads, vector<si
     }
 }
 
+/**
+ * Compute the likelihood for a given range of sites (bounded computation)
+ * @param start Start index of the site range
+ * @param end End index of the site range
+ * @param packet_id Packet ID for the current computation
+ * @return The computed likelihood value
+ */
 double LikelihoodCalculator::computeLikelihoodFromBound(size_t start, size_t end, int packet_id) {
 #ifdef VERBOSE
     cout << "Processing chunk in computeLikelihoodFromBound() " << packet_id << " from " << start << " to " << end
@@ -193,6 +271,14 @@ double LikelihoodCalculator::computeLikelihoodFromBound(size_t start, size_t end
 
 }
 
+/**
+ * Build the one-hot likelihood matrix for a tip (leaf) node for bounded computation
+ * @param taxonName
+ * @param start
+ * @param end
+ * @param packet_id
+ * @return one-hot likelihood matrix for the given range of sites
+ */
 Matrix
 LikelihoodCalculator::buildTipLikelihoodBounded(const std::string &taxonName, size_t start, size_t end, int packet_id) {
     int numStates = 4;
@@ -229,6 +315,13 @@ LikelihoodCalculator::buildTipLikelihoodBounded(const std::string &taxonName, si
     return L;
 }
 
+/**
+ * Compute the partial likelihood for a tip (leaf) node for bounded computation
+ * @param node
+ * @param start
+ * @param end
+ * @param packet_id
+ */
 void LikelihoodCalculator::computeTipLikelihoodBounded(Node *node, size_t start, size_t end, int packet_id) {
     if (!node->isLeaf()) return;
 
@@ -255,6 +348,29 @@ double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL) 
     Matrix baseFrequencies = model_->getBaseFrequencies();
     Matrix siteLikelihoods = baseFrequencies * rootL;
 
+#ifdef USE_OPENACC
+
+
+    // Extract a flat pointer to siteLikelihoods (assuming row-major)
+    double* sl = siteLikelihoods.data();
+
+    //  Precompute frequencies to avoid GPU accessing aln_
+    int *freqData = new int[numPatterns];
+    for (int j = 0; j < numPatterns; ++j) {
+        freqData[j] = aln_->patterns[j].frequency;
+    }
+
+    #pragma acc enter data copyin(sl[0:numPatterns], freqData[0:numPatterns])
+
+    #pragma acc parallel loop reduction(+:logL) present(sl[0:numPatterns], freqData[0:numPatterns])
+    for (int j = 0; j < numPatterns; ++j) {
+        double siteLikelihood = sl[j];  // 1-row matrix, first row
+        logL += freqData[j] * std::log(siteLikelihood);
+    }
+
+    #pragma acc exit data delete(sl[0:numPatterns], freqData[0:numPatterns])
+
+#else
     for (int j = 0; j < numPatterns; ++j) {
         double siteLikelihood = siteLikelihoods(0, j);  // Assuming siteLikelihoods is a 1-row matrix
 
@@ -263,6 +379,7 @@ double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL) 
         logL += freq * std::log(siteLikelihood);
 
     }
+#endif
     return logL;
 }
 
