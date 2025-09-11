@@ -360,7 +360,7 @@ double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL) 
 
     #pragma acc enter data copyin(freqData[0:numPatterns]) async(2)
 
-    Matrix siteLikelihoods(numPatterns, 1);
+    Matrix siteLikelihoods(1, numPatterns);
     baseFrequencies.multiplyInPlace(rootL, siteLikelihoods);
 #else
     Matrix siteLikelihoods = baseFrequencies * rootL;
