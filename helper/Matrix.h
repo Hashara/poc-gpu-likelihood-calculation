@@ -69,6 +69,7 @@ public:
 
 #ifdef USE_OPENACC
     void compositeHadamard(const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R) const;
+    void multiplyInPlace(const Matrix& B, Matrix& R) const;
 #endif
 
 private:

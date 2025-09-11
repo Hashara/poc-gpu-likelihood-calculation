@@ -41,4 +41,8 @@ void MatrixOpCPU::compositehadamard(const Matrix &A, const Matrix &B,
                                        const Matrix &C, const Matrix &D, Matrix &R) {
     R = hadamard(A * B, C * D);
 }
+
+void MatrixOpCPU::multiplyInPlace(const Matrix &A, const Matrix &B, Matrix &R) {
+    R = multiply(A, B);
+}
 #endif // USE_OPENACC

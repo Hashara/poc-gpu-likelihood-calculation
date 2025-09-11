@@ -57,7 +57,7 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     nvtxRangePushA("Prepare Tip Likelihood on GPU for leaf");
     // Move the likelihood matrix to the GPU
     const double* l = L.data();
-    #pragma acc enter data copyin(l[0:numStates * numPatterns])
+    #pragma acc enter data copyin(l[0:numStates * numPatterns]) async(1)
     nvtxRangePop();
 #endif
 #ifdef VERBOSE
@@ -169,6 +169,9 @@ void LikelihoodCalculator::traverseAndCompute(Node *node) {
     if (node->isLeaf()) {
         computeTipLikelihood(node);
     } else {
+#ifdef USE_OPENACC
+        #pragma acc wait(1)
+#endif
         computeInternalLikelihood(node);
     }
 }
@@ -346,29 +349,39 @@ double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL) 
     int numPatterns = rootL.cols();
 
     Matrix baseFrequencies = model_->getBaseFrequencies();
-    Matrix siteLikelihoods = baseFrequencies * rootL;
 
 #ifdef USE_OPENACC
-
-
-    // Extract a flat pointer to siteLikelihoods (assuming row-major)
-    double* sl = siteLikelihoods.data();
-
     //  Precompute frequencies to avoid GPU accessing aln_
     int *freqData = new int[numPatterns];
+
     for (int j = 0; j < numPatterns; ++j) {
         freqData[j] = aln_->patterns[j].frequency;
     }
 
-    #pragma acc enter data copyin(sl[0:numPatterns], freqData[0:numPatterns])
+    #pragma acc enter data copyin(freqData[0:numPatterns]) async(2)
 
+    Matrix siteLikelihoods(numPatterns, 1);
+    baseFrequencies.multiplyInPlace(rootL, siteLikelihoods);
+#else
+    Matrix siteLikelihoods = baseFrequencies * rootL;
+#endif
+
+
+
+#ifdef USE_OPENACC
+
+
+    // Extract a flat pointer to siteLikelihoods
+    double* sl = siteLikelihoods.data();
+
+    #pragma acc wait(2)
     #pragma acc parallel loop reduction(+:logL) present(sl[0:numPatterns], freqData[0:numPatterns])
     for (int j = 0; j < numPatterns; ++j) {
         double siteLikelihood = sl[j];  // 1-row matrix, first row
         logL += freqData[j] * std::log(siteLikelihood);
     }
 
-    #pragma acc exit data delete(sl[0:numPatterns], freqData[0:numPatterns])
+    #pragma acc exit data delete(sl[0:numPatterns], freqData[0:numPatterns]) async
 
 #else
     for (int j = 0; j < numPatterns; ++j) {
