@@ -42,23 +42,82 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
         throw std::runtime_error("Taxon name not found in alignment: " + node->name);
     }
 
+#ifdef USE_OPENACC
+    nvtxRangePushA("buildTipLikelihood");
+    node->partialLikelihood.resize(numStates, numPatterns);
+
+    Matrix& L = node->partialLikelihood;
+
+
+    int* tipState = new int[numPatterns];
+
+    for (int p = 0; p < numPatterns; ++p) {
+        const char c = aln_->patterns[p][taxonIndex];
+        const int s = static_cast<int>(c) - static_cast<int>('0');
+        if (static_cast<unsigned>(s) > 3u) {
+            throw std::runtime_error("Non-digit or out-of-range state at pattern " + std::to_string(p));
+        }
+        tipState[p] = s;  // 0..3
+    }
+
+    double* l = L.data();
+    const size_t sz = numStates * numPatterns;
+
+    #pragma acc enter data create(l[0:sz]) async(3)
+    #pragma acc enter data copyin(tipState[0:numPatterns]) async(3)
+
+    #pragma acc wait(3)
+    #pragma acc parallel loop present(l[0:sz], tipState[0:numPatterns]) async(1)
+    for (int p = 0; p < numPatterns; ++p) {
+        const int s = tipState[p];
+        const size_t base = static_cast<size_t>(p) * numStates;
+
+        // Branchless-ish writes; each becomes 0.0 or 1.0
+        l[base + 0] = (s == 0) ? 1.0 : 0.0;
+        l[base + 1] = (s == 1) ? 1.0 : 0.0;
+        l[base + 2] = (s == 2) ? 1.0 : 0.0;
+        l[base + 3] = (s == 3) ? 1.0 : 0.0;
+    }
+
+    nvtxRangePop();
+#else
     node->partialLikelihood.resize(numStates, numPatterns);
 
     Matrix& L = node->partialLikelihood;
 //    node->partialLikelihood(numStates, numPatterns);
+//    for (int p = 0; p < numPatterns; ++p) {
+//        int state = (*aln_).patterns[p][taxonIndex] - '0';
+//        for (int s = 0; s < numStates; ++s) {
+//            L(s, p) = (s == state) ? 1.0 : 0.0;
+//        }
+//    }
+
+    double *l = L.data();
+
+    std::vector<int> tipState(numPatterns);
     for (int p = 0; p < numPatterns; ++p) {
-        int state = (*aln_).patterns[p][taxonIndex] - '0';
-        for (int s = 0; s < numStates; ++s) {
-            L(s, p) = (s == state) ? 1.0 : 0.0;
+        const char c = aln_->patterns[p][taxonIndex];
+        const int  s = static_cast<int>(c) - static_cast<int>('0');
+        if (static_cast<unsigned>(s) > 3u) {
+            // handle ambiguities/gaps here if you have a policy; for now, be strict:
+            throw std::runtime_error("Non-digit or out-of-range state at pattern " + std::to_string(p));
         }
+        tipState[p] = s;
     }
 
-#ifdef USE_OPENACC
-    nvtxRangePushA("Prepare Tip Likelihood on GPU for leaf");
-    // Move the likelihood matrix to the GPU
-    const double* l = L.data();
-    #pragma acc enter data copyin(l[0:numStates * numPatterns]) async(1)
-    nvtxRangePop();
+    // --- branchless basis columns (32 bytes each) ---
+    alignas(64) static const double BASIS[4][4] = {
+            {1.0, 0.0, 0.0, 0.0},  // state 0
+            {0.0, 1.0, 0.0, 0.0},  // state 1
+            {0.0, 0.0, 1.0, 0.0},  // state 2
+            {0.0, 0.0, 0.0, 1.0}   // state 3
+    };
+
+    // --- fill columns; column-major index base = p*numStates ---
+    for (int p = 0; p < numPatterns; ++p) {
+        const int s = tipState[p];
+        std::memcpy(&l[p * numStates], BASIS[s], 4 * sizeof(double));
+    }
 #endif
 #ifdef VERBOSE
     cout << "Tip likelihood for " << taxonName << ":\n";
