@@ -27,9 +27,10 @@ Matrix MatrixOpOpenACC::multiply(const Matrix &A, const Matrix &B) {
                 double sum = 0.0;
 #pragma acc loop vector reduction(+:sum)
                 for (size_t k = 0; k < N; ++k) {
-                    sum += a[i*N + k] * b[k*P + j];
+                    // column-major indexing
+                    sum += a[k*M + i] * b[j*N + k];
                 }
-                c[i*P + j] = sum;
+                c[j*M + i] = sum;
             }
         }
     }
@@ -57,9 +58,11 @@ Matrix MatrixOpOpenACC::hadamard(const Matrix &A, const Matrix &B) {
     #pragma acc data copyin(a[0:Asz], b[0:Asz]) copyout(c[0:Asz])
     {
         #pragma acc parallel loop collapse(2) gang vector
-        for (size_t i = 0; i < M; ++i) {
-            for (size_t j = 0; j < N; ++j) {
-                c[i*N + j] = a[i*N + j] * b[i*N + j];  // Row-major
+        for (size_t j = 0; j < N; ++j) {
+            for (size_t i = 0; i < M; ++i) {
+                // column-major: idx = j*M + i
+                size_t idx = j*M + i;
+                c[idx] = a[idx] * b[idx];
             }
         }
     }
@@ -70,8 +73,8 @@ Matrix MatrixOpOpenACC::hadamard(const Matrix &A, const Matrix &B) {
 
 void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
                                           const Matrix &C, const Matrix &D, Matrix &R) {
-    // A, B are transition matrices
-    // C, D are likelihood matrices
+    // A, C are transition matrices
+    // B, D are likelihood matrices
     nvtxRangePushA("MatrixOpOpenACC::compositehadamard");
 
     size_t M = A.rows(), N = A.cols(), P = B.cols();
@@ -84,84 +87,70 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
     const double *b = B.data();
     const double *c = C.data();
     const double *d = D.data();
-    double *r1 = R1.data();
-    double *r2 = R2.data();
+
     double *r = R.data();
 
     size_t Asz = M * N;
     size_t Bsz = N * P;
     size_t Csz = M * P;
 
-#pragma acc enter data copyin(r[0:Csz]) // Pre-create output matrix on device
-    // One data region for all matrices
-//#pragma acc data copyin(a[0:Asz], b[0:Bsz], c[0:Asz], d[0:Bsz]) \
-//                     create(r1[0:Csz], r2[0:Csz]) copyout(r[0:Csz])
-/*
-#pragma acc data present(b[0:Bsz], d[0:Bsz], r[0:Csz], a[0:Asz], c[0:Asz]) \
-                     create(r1[0:Csz], r2[0:Csz])
-    {
-        // First multiplication (async queue 1)
-#pragma acc parallel loop collapse(2) gang vector async(1)
-        for (size_t i = 0; i < M; ++i) {
-            for (size_t j = 0; j < P; ++j) {
-                double sum = 0.0;
-#pragma acc loop reduction(+:sum)
-                for (size_t k = 0; k < N; ++k) {
-                    sum += a[i*N + k] * b[k*P + j];
-                }
-                r1[i*P + j] = sum;
-            }
-        }
-
-        // Second multiplication (async queue 2)
-#pragma acc parallel loop collapse(2) gang vector async(2)
-        for (size_t i = 0; i < M; ++i) {
-            for (size_t j = 0; j < P; ++j) {
-                double sum = 0.0;
-#pragma acc loop reduction(+:sum)
-                for (size_t k = 0; k < N; ++k) {
-                    sum += c[i*N + k] * d[k*P + j];
-                }
-                r2[i*P + j] = sum;
-            }
-        }
-
-        // Wait for both multiplies to finish
-#pragma acc wait(1,2)
-
-        // Hadamard product
-#pragma acc parallel loop collapse(2) gang vector
-        for (size_t i = 0; i < M; ++i) {
-            for (size_t j = 0; j < P; ++j) {
-                r[i*P + j] = r1[i*P + j] * r2[i*P + j];
-            }
-        }
-    }
-*/
+#pragma acc enter data create(r[0:Csz]) // Pre-create output matrix on device
 
 // Single kernel for both multiplications and Hadamard product
 #pragma acc data present(a[0:Asz], b[0:Bsz], c[0:Asz], d[0:Bsz], r[0:Csz])
     {
         // One kernel, two dot-products, one write
 #pragma acc parallel loop collapse(2) gang vector vector_length(128)
-        for (size_t i = 0; i < M; ++i) {
-            for (size_t j = 0; j < P; ++j) {
+        for (size_t j = 0; j < P; ++j) {
+            for (size_t i = 0; i < M; ++i) {
                 double s1 = 0.0, s2 = 0.0;
-
-                // Optional: manual tiling over k for cache reuse (see §2)
 #pragma acc loop seq
                 for (size_t k = 0; k < N; ++k) {
-                    s1 += a[i*N + k] * b[k*P + j];
-                    s2 += c[i*N + k] * d[k*P + j];
+                    // column-major indexing
+                    s1 += a[k*M + i] * b[j*N + k];  // A(i,k) * B(k,j)
+                    s2 += c[k*M + i] * d[j*N + k];  // C(i,k) * D(k,j)
+
                 }
 
-                r[i*P + j] = s1 * s2;
+                r[j*M + i] = s1 * s2;
             }
         }
     }
 
-
+#pragma data exit delete(a[0:Asz], c[0:Asz]) async
     nvtxRangePop();
 //    return R;
+}
+
+void MatrixOpOpenACC::multiplyInPlace(const Matrix &A, const Matrix &B, Matrix &R) {
+    nvtxRangePushA("MatrixOpOpenACC::multiplyInPlace");
+    size_t M = A.rows(), N = A.cols(), P = B.cols();
+    size_t Asz = M * N, Bsz = N * P, Csz = M * P;
+
+    if (N != B.rows())
+        throw std::invalid_argument("Matrix dimensions do not match");
+
+    R.resize(M, P);
+
+    const double *a = A.data();
+    const double *b = B.data();
+    double *c = R.data();
+#pragma acc enter data create(c[0:Csz]) // Pre-create output matrix on device
+#pragma acc data present_or_copyin(a[0:Asz], b[0:Bsz], c[0:Csz])
+    {
+#pragma acc parallel loop collapse(2) gang vector
+        for (size_t j = 0; j < P; ++j) {
+            for (size_t i = 0; i < M; ++i) {
+                double sum = 0.0;
+#pragma acc loop vector reduction(+:sum)
+                for (size_t k = 0; k < N; ++k) {
+                    // column-major addressing
+                    sum += a[k*M + i] * b[j*N + k];   // A(i,k) * B(k,j)
+                }
+                c[j*M + i] = sum;                     // R(i,j)
+            }
+        }
+#pragma data exit delete(a[0:Asz], b[0:Bsz]) async
+    }
 }
 
