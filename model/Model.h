@@ -21,6 +21,8 @@ public:
     // Transition probability matrix P(t) for a given branch length t
     virtual Matrix getTransitionMatrix(double t) const = 0;
 
+    virtual void buildTransitionMatrix(double t, Matrix &P) const = 0;
+
 
     // 4x4 substitution rate matrix for DNA
     virtual Matrix getRateMatrix() const = 0;

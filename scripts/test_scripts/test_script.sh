@@ -1,13 +1,17 @@
 #!/bin/bash
 
-lengths=(100 1000 10000 100000 1000000)
-executable_type=("openmp_gpu" "openacc")
+#lengths=(100 1000 10000 100000 1000000)
+lengths=(1000000)
+#executable_type=("openmp_gpu" "openacc")
+#executable_type=("cuda" "cublas")
+executable_type=("optimized_openacc")
 #executable_type=("eigen" "cpu")
 tree_file="tree.nwk"
 DATASET_DIR="test_data/"
 
 # Loop through each taxa folder
-for TAXA_DIR in "$DATASET_DIR"{4,100,500,1000,10000}taxa; do
+#for TAXA_DIR in "$DATASET_DIR"{4,100,500,1000,10000}taxa; do
+for TAXA_DIR in "$DATASET_DIR"{100,2}taxa; do
     echo "Processing folder: $TAXA_DIR"
     taxa_size=$(basename "$TAXA_DIR")
 
@@ -23,7 +27,7 @@ for TAXA_DIR in "$DATASET_DIR"{4,100,500,1000,10000}taxa; do
 
             #loop through each executable type
             for type in "${executable_type[@]}"; do
-                executable_path="../../build/$type/gpulcal"
+                executable_path="../../profile_build/$type/gpulcal"
                 echo "Using executable: $executable_path"
                 
                 if [ -f "$executable_path" ]; then
