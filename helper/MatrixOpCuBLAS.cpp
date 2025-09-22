@@ -53,13 +53,17 @@ Matrix MatrixOpCuBLAS::multiply(const Matrix& A, const Matrix& B) {
        lda, ldb, ldc -> Leading dimensions of A, B, C respectively
        beta -> Scalar multiplier for C
      */
-    cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
-                P, M, N,
-                &alpha,
-                d_B, P,
-                d_A, N,
-                &beta,
-                d_C, P);
+    // Column-major GEMM: C(MxP) = A(MxN) * B(NxP)
+    cublasDgemm(handle,
+                             CUBLAS_OP_N, CUBLAS_OP_N,
+            /* m */ M,
+            /* n */ P,
+            /* k */ N,
+                             &alpha,
+            /* A */ d_A, /* lda */ M,
+            /* B */ d_B, /* ldb */ N,
+                             &beta,
+            /* C */ d_C, /* ldc */ M);
 
     cudaMemcpy(C.data(), d_C, sizeC, cudaMemcpyDeviceToHost);
 
