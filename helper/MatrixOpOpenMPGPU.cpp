@@ -20,9 +20,10 @@ Matrix MatrixOpOpenMPGPU::hadamard(const Matrix &A, const Matrix &B) {
 #pragma omp target data map(to: a[0:Asz], b[0:Asz]) map(from: c[0:Asz])
     {
 #pragma omp target teams distribute parallel for collapse(2)
-        for (size_t i = 0; i < M; ++i) {
-            for (size_t j = 0; j < N; ++j) {
-                c[i * N + j] = a[i * N + j] * b[i * N + j];  // row-major layout
+        for (size_t j = 0; j < N; ++j) {
+            for (size_t i = 0; i < M; ++i) {
+                size_t idx = j * M + i;          // column-major
+                c[idx] = a[idx] * b[idx];
             }
         }
     }
@@ -49,9 +50,10 @@ Matrix MatrixOpOpenMPGPU::multiply(const Matrix &A, const Matrix &B) {
             for (size_t j = 0; j < P; ++j) {
                 double sum = 0.0;
                 for (size_t k = 0; k < N; ++k) {
-                    sum += a[i * N + k] * b[k * P + j];
+                    // column-major indexing
+                    sum += a[k*M + i] * b[j*N + k];
                 }
-                c[i * P + j] = sum;
+                c[j*M + i] = sum;
             }
         }
     }
