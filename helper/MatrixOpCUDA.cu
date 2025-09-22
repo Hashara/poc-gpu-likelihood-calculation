@@ -9,14 +9,17 @@
 __global__ void matMulKernel(const double* A, const double* B, double* C, int M, int N, int P) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
+
     if (row < M && col < P) {
         double sum = 0.0;
         for (int k = 0; k < N; ++k) {
-            sum += A[row * N + k] * B[k * P + col];
+            // Column-major indexing
+            sum +=  A[row + k * M] * B[k + col * N];
         }
-        C[row * P + col] = sum;
+        C[row + col * M] = sum;  // C(row,col)
     }
 }
+
 
 Matrix MatrixOpCUDA::multiply(const Matrix& A, const Matrix& B) {
     int M = A.rows(), N = A.cols(), P = B.cols();
