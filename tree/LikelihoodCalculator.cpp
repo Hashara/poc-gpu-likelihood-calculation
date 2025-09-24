@@ -6,6 +6,7 @@
 #include <cmath>
 #ifdef USE_OPENACC
 #include <nvtx3/nvToolsExt.h>
+#include <vector>
 #endif
 #define COMPOSITE_HADAMARD
 
@@ -215,6 +216,7 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
  * Traverse the tree in post-order and compute partial likelihoods
  * @param node --> pass the root node here
  */
+/*
 void LikelihoodCalculator::traverseAndCompute(Node *node) {
     // Skip if already computed
     if (node->isPartialLikelihoodCalculated) return;
@@ -234,6 +236,39 @@ void LikelihoodCalculator::traverseAndCompute(Node *node) {
         computeInternalLikelihood(node);
     }
 }
+*/
+
+void LikelihoodCalculator::traverseAndCompute(Node* root) {
+    std::vector<Node*> post;
+    buildPostorder(root, post);
+
+    // Phase 1: tips (independent)
+    for (Node* n : post) {
+        if (!n->isPartialLikelihoodCalculated && n->isLeaf()) {
+            computeTipLikelihood(n);
+            n->isPartialLikelihoodCalculated = true;
+        }
+    }
+
+#ifdef USE_OPENACC
+#pragma acc wait(1)
+#endif
+
+
+    // Phase 2: internal nodes
+    for (Node* n : post) {
+        if (!n->isPartialLikelihoodCalculated && !n->isLeaf()) {
+            computeInternalLikelihood(n);
+            n->isPartialLikelihoodCalculated = true;
+        }
+    }
+}
+
+void LikelihoodCalculator::buildPostorder(Node* n, std::vector<Node*>& out) {
+    for (Node* c : n->children) buildPostorder(c, out);
+    out.push_back(n);
+}
+
 
 /**
  * Traverse the tree in post-order and compute partial likelihoods for bounded computation

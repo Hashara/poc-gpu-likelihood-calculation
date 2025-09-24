@@ -21,6 +21,8 @@ public:
     // Traverse the tree in post-order and compute partial likelihoods
     void traverseAndCompute(Node* node);
 
+    void buildPostorder(Node* n, std::vector<Node*>& out);
+
     void traverseAndComputeBounded(Node* node, size_t start, size_t end, int packet_id);
 
 //    Matrix buildTipLikelihood(const std::string& taxonName);
