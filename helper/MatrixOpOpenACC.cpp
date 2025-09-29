@@ -76,6 +76,11 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
     // A, C are transition matrices
     // B, D are likelihood matrices
     nvtxRangePushA("MatrixOpOpenACC::compositehadamard");
+//#ifdef TRANSPOSED_RATE_MATRIX
+//    std::cout << "Using transposed rate matrix in MatrixOpOpenACC::compositehadamard" << std::endl;
+//#else
+//    std::cout << "Using non-transposed rate matrix in MatrixOpOpenACC::compositehadamard" << std::endl;
+//#endif
 
     size_t M = A.rows(), N = A.cols(), P = B.cols();
 
@@ -100,18 +105,35 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
 #pragma acc data present(a[0:Asz], b[0:Bsz], c[0:Asz], d[0:Bsz], r[0:Csz])
     {
         // One kernel, two dot-products, one write
-#pragma acc parallel loop collapse(2) gang vector vector_length(128)
+
+//#pragma acc kernels // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/04-Parallelize.html#the-kernels-construct
+#pragma acc parallel loop collapse(2) gang vector vector_length(128) // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/06-Loops.html
         for (size_t j = 0; j < P; ++j) {
             for (size_t i = 0; i < M; ++i) {
                 double s1 = 0.0, s2 = 0.0;
+
+#ifdef TRANSPOSED_RATE_MATRIX
+                const double *local_b = &b[j*N]; // pointer to start of column j in B
+                const double *local_d = &d[j*N]; // pointer to start of column j in D
+                const double *local_a = &a[i*N]; // pointer to start of row i in A (transposed)
+                const double *local_c = &c[i*N]; // pointer to start of row i in C (transposed)
+
+                #pragma acc loop seq
+                for (size_t k = 0; k < N; ++k) {
+                    // column-major indexing
+                    s1 += local_a[k] * local_b[k];  // A(i,k) * B(k,j)
+                    s2 += local_c[k] * local_d[k];  // C(i,k) * D(k,j)
+                }
+#else
+                const double *local_b = &b[j*N]; // pointer to start of column j in B
+                const double *local_d = &d[j*N]; // pointer to start of column j in D
 #pragma acc loop seq
                 for (size_t k = 0; k < N; ++k) {
                     // column-major indexing
-                    s1 += a[k*M + i] * b[j*N + k];  // A(i,k) * B(k,j)
-                    s2 += c[k*M + i] * d[j*N + k];  // C(i,k) * D(k,j)
-
+                    s1 += a[k*M + i] * local_b[k];  // A(i,k) * B(k,j)
+                    s2 += c[k*M + i] * local_d[k];  // C(i,k) * D(k,j)
                 }
-
+#endif
                 r[j*M + i] = s1 * s2;
             }
         }

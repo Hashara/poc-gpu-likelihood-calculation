@@ -7,7 +7,6 @@
 #include <cmath>
 #include <iostream>
 
-
 std::string ModelPOISSON::getName() const {
     return "POISSON";
 }
@@ -121,7 +120,24 @@ Matrix ModelPOISSON::getTransitionMatrix(double t) const {
     }
     return P;
 }
+#if defined(USE_OPENACC) && defined(TRANSPOSED_RATE_MATRIX)
+void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
+    double e = std::exp(-20.0 * t / 19.0);
 
+    for (int i = 0; i < 20; ++i) {
+        for (int j = 0; j < 20; ++j) {
+            if (i == j)
+                P(j, i) = 0.05 + 0.95 * e;
+            else
+                P(j, i) = 0.05 - 0.05 * e;
+        }
+    }
+#ifdef USE_OPENACC
+    double* p = P.data();
+    #pragma acc enter data copyin(p[0:400])
+#endif
+}
+#else
 void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
     double e = std::exp(-20.0 * t / 19.0);
 
@@ -138,7 +154,7 @@ void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
     #pragma acc enter data copyin(p[0:400])
 #endif
 }
-
+#endif
 #endif // USE_EIGEN
 
 

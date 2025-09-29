@@ -6,7 +6,6 @@
 #include <cmath>
 #include <iostream>
 
-
 std::string ModelJC::getName() const {
     return "JC69";
 }
@@ -126,6 +125,24 @@ Matrix ModelJC::getTransitionMatrix(double t) const {
     return P;
 }
 
+#if defined(USE_OPENACC) && defined(TRANSPOSED_RATE_MATRIX)
+void ModelJC::buildTransitionMatrix(double t, Matrix &P) const {
+    double e = std::exp(-4.0 * t / 3.0);
+
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            if (i == j)
+                P(j, i) = 0.25 + 0.75 * e;   // swapped indices for get the transpose
+            else
+                P(j, i) = 0.25 - 0.25 * e;   // swapped indices for get the transpose
+        }
+    }
+
+    double* P_data = P.data();
+    #pragma acc enter data copyin(P_data[0:16])
+
+}
+#else // TRANSPOSED_RATE_MATRIX
 void ModelJC::buildTransitionMatrix(double t, Matrix &P) const {
     double e = std::exp(-4.0 * t / 3.0);
 
@@ -143,5 +160,6 @@ void ModelJC::buildTransitionMatrix(double t, Matrix &P) const {
     #pragma acc enter data copyin(P_data[0:16])
 #endif
 }
+#endif //TRANSPOSED_RATE_MATRIX
 #endif
 
