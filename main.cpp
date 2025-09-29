@@ -3,32 +3,47 @@
 #include "alignment/alignmentIO.h"
 #include "tree/TreeReader.h"
 #include "model/ModelJC.h"
+#include "model/ModelPOISSON.h"
 #include <string>
 #include <iomanip>  // for std::setprecision
 #include <chrono>
 #include "helper/logger/Logger.h"
 
+#include "Params.h"
 
 //#define VERBOSE
 
-struct Params {
-    int a_row, a_col, b_row, b_col;
-    int seedA = 42, seedB = 52, seedC = 62, seedD = 72;
-    std::string alignment_file = "../example/alignment.phy";
-    std::string tree_file = "../example/tree.nwk";
-    std::string log_file = "output.log";
-};
 
-Params parseArgs(int argc, char *argv[]) {
-    Params params;
+void parseArgs(int argc, char *argv[]) {
+    Params& params = Params::instance();
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "-s" && i + 1 < argc) params.alignment_file = argv[++i];
-        else if (arg == "-te" && i + 1 < argc) params.tree_file = argv[++i];
-        else if (arg == "-prefix" && i + 1 < argc) params.log_file = argv[++i];
+
+        if (arg == "-s" && i + 1 < argc) {
+            params.alignment_file = argv[++i];
         }
-    return params;
+        else if (arg == "-te" && i + 1 < argc) {
+            params.tree_file = argv[++i];
+        }
+        else if (arg == "-prefix" && i + 1 < argc) {
+            params.log_file = argv[++i];
+        }
+        else if (arg == "--seqtype" && i + 1 < argc) {
+            std::string stype = argv[++i];
+            if (stype == "DNA") params.seq_type = SEQ_DNA;
+            else if (stype == "AA" || stype == "PROTEIN"){
+                params.seq_type = SEQ_PROTEIN;
+                params.numStates = 20;
+            }
+            else throw std::invalid_argument("Unknown sequence type: " + stype);
+        }
+        else {
+            throw std::invalid_argument("Unknown argument: " + arg);
+        }
+    }
 }
+
 
 void printUsage(const char *progName) {
     std::cerr << "U sage: " << progName
@@ -38,7 +53,8 @@ void printUsage(const char *progName) {
 
 int main(int argc, char *argv[]) {
     try {
-        auto params = parseArgs(argc, argv);
+        parseArgs(argc, argv);
+        Params& params = Params::instance();
 
         initLogger(params.log_file);
         auto start = std::chrono::high_resolution_clock::now();
@@ -47,6 +63,8 @@ int main(int argc, char *argv[]) {
         auto end = std::chrono::high_resolution_clock::now();
 
         logInfo("Alignment loaded successfully.");
+        logInfo("Alignment is of type: " + (std::string)(params.seq_type == SEQ_DNA ? "DNA" : "PROTEIN"));
+
         std::chrono::duration<double> elapsed = end - start;
         logInfo("Time taken to read alignment: " + std::to_string(elapsed.count()) + " seconds");
 
@@ -66,8 +84,6 @@ int main(int argc, char *argv[]) {
         aln.printAlignment();
         printTree(tree.root);
 #endif
-        ModelJC jc;
-        logInfo("ModelJC initialized successfully.");
 
 
 #ifdef USE_OPENACC
@@ -101,9 +117,20 @@ int main(int argc, char *argv[]) {
 #endif
         logInfo("Starting likelihood calculation...");
         cout << "Starting likelihood calculation..." << endl;
-        start = std::chrono::high_resolution_clock::now();
 
-        double logLikelihood = tree.computeLikelihood(&aln, &jc);
+        double logLikelihood;
+
+        if (params.seq_type == SEQ_DNA){
+            ModelJC jc;
+            logInfo("ModelJC initialized successfully.");
+            start = std::chrono::high_resolution_clock::now();
+            logLikelihood = tree.computeLikelihood(&aln, &jc);
+        } else  {
+            ModelPOISSON poisson;
+            logInfo("ModelPOISSON initialized successfully.");
+            start = std::chrono::high_resolution_clock::now();
+            logLikelihood = tree.computeLikelihood(&aln, &poisson);
+        }
 
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
