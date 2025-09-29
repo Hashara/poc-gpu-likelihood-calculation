@@ -46,6 +46,9 @@ set(SRC
         helper/logger/Logger.cpp
         helper/logger/Logger.h
         helper/logger/Logger.h
+        Params.h
+        model/ModelPOISSON.cpp
+        model/ModelPOISSON.h
 )
 ######################################################
 # setup compilers
