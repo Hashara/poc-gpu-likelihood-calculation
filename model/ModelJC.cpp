@@ -129,37 +129,45 @@ Matrix ModelJC::getTransitionMatrix(double t) const {
 void ModelJC::buildTransitionMatrix(double t, Matrix &P) const {
     double e = std::exp(-4.0 * t / 3.0);
 
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
+    double* p = P.data();
+#pragma acc enter data create(p[0:16])
+
+    for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < 4; ++i) {
             if (i == j)
-                P(j, i) = 0.25 + 0.75 * e;   // swapped indices for get the transpose
+                p[j * 4 + i] = 0.25 + 0.75 * e;
             else
-                P(j, i) = 0.25 - 0.25 * e;   // swapped indices for get the transpose
+                p[j * 4 + i] = 0.25 - 0.25 * e;
         }
     }
 
-    double* P_data = P.data();
-    #pragma acc enter data copyin(P_data[0:16])
+#pragma acc update device(p[0:16])
 
 }
 #else // TRANSPOSED_RATE_MATRIX
+
 void ModelJC::buildTransitionMatrix(double t, Matrix &P) const {
     double e = std::exp(-4.0 * t / 3.0);
+    double *p = P.data();
 
+#ifdef USE_OPENACC
+    #pragma acc enter data create(p[0:16])
+#endif
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
             if (i == j)
-                P(i, j) = 0.25 + 0.75 * e;
+                p[i * 4 + j] = 0.25 + 0.75 * e;
             else
-                P(i, j) = 0.25 - 0.25 * e;
+                p[i * 4 + j] = 0.25 - 0.25 * e;
         }
     }
 
+
 #ifdef USE_OPENACC
-    double* P_data = P.data();
-    #pragma acc enter data copyin(P_data[0:16])
+#pragma acc update device(p[0:16])
 #endif
 }
+
 #endif //TRANSPOSED_RATE_MATRIX
 #endif
 
