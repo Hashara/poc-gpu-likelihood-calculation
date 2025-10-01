@@ -6,7 +6,6 @@
 #include <cmath>
 #include <iostream>
 
-
 std::string ModelJC::getName() const {
     return "JC69";
 }
@@ -126,22 +125,49 @@ Matrix ModelJC::getTransitionMatrix(double t) const {
     return P;
 }
 
+#if defined(USE_OPENACC) && defined(TRANSPOSED_RATE_MATRIX)
 void ModelJC::buildTransitionMatrix(double t, Matrix &P) const {
     double e = std::exp(-4.0 * t / 3.0);
 
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
+    double* p = P.data();
+#pragma acc enter data create(p[0:16])
+
+    for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < 4; ++i) {
             if (i == j)
-                P(i, j) = 0.25 + 0.75 * e;
+                p[j * 4 + i] = 0.25 + 0.75 * e;
             else
-                P(i, j) = 0.25 - 0.25 * e;
+                p[j * 4 + i] = 0.25 - 0.25 * e;
         }
     }
 
+#pragma acc update device(p[0:16])
+
+}
+#else // TRANSPOSED_RATE_MATRIX
+
+void ModelJC::buildTransitionMatrix(double t, Matrix &P) const {
+    double e = std::exp(-4.0 * t / 3.0);
+    double *p = P.data();
+
 #ifdef USE_OPENACC
-    double* P_data = P.data();
-    #pragma acc enter data copyin(P_data[0:16])
+    #pragma acc enter data create(p[0:16])
+#endif
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            if (i == j)
+                p[i * 4 + j] = 0.25 + 0.75 * e;
+            else
+                p[i * 4 + j] = 0.25 - 0.25 * e;
+        }
+    }
+
+
+#ifdef USE_OPENACC
+#pragma acc update device(p[0:16])
 #endif
 }
+
+#endif //TRANSPOSED_RATE_MATRIX
 #endif
 

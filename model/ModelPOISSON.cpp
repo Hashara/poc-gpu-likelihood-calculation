@@ -7,7 +7,6 @@
 #include <cmath>
 #include <iostream>
 
-
 std::string ModelPOISSON::getName() const {
     return "POISSON";
 }
@@ -121,24 +120,47 @@ Matrix ModelPOISSON::getTransitionMatrix(double t) const {
     }
     return P;
 }
-
+#if defined(USE_OPENACC) && defined(TRANSPOSED_RATE_MATRIX)
 void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
     double e = std::exp(-20.0 * t / 19.0);
+    double* p = P.data();
+
+#pragma acc enter data create(p[0:400])
 
     for (int i = 0; i < 20; ++i) {
         for (int j = 0; j < 20; ++j) {
             if (i == j)
-                P(i, j) = 0.05 + 0.95 * e;
+                p[j * 20 + i] = 0.05 + 0.95 * e;
             else
-                P(i, j) = 0.05 - 0.05 * e;
+                p[j * 20 + i] = 0.05 - 0.05 * e;
+        }
+    }
+
+    #pragma acc update device(p[0:400])
+
+}
+#else
+void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
+    double e = std::exp(-20.0 * t / 19.0);
+    double *p = P.data();
+
+#ifdef USE_OPENACC
+    #pragma acc enter data create(p[0:400])
+#endif
+
+    for (int i = 0; i < 20; ++i) {
+        for (int j = 0; j < 20; ++j) {
+            if (i == j)
+                p[i * 20 + j] = 0.05 + 0.95 * e;
+            else
+                p[i * 20 + j] = 0.05 - 0.05 * e;
         }
     }
 #ifdef USE_OPENACC
-    double* p = P.data();
-    #pragma acc enter data copyin(p[0:400])
+    #pragma acc update device(p[0:400])
 #endif
 }
-
+#endif
 #endif // USE_EIGEN
 
 
