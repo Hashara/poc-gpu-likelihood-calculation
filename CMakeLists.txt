@@ -205,6 +205,14 @@ endif ()
 
 ##################################################################
 
+# Other options
+if (TRANSPOSED_RATE_MATRIX)
+    message("Transposed Rate Matrix : Yes")
+    add_definitions(-DTRANSPOSED_RATE_MATRIX)
+else()
+    message("Transposed Rate Matrix : NONE")
+endif ()
+
 add_executable(gpulcal ${SRC})
 
 if (USE_CUBLAS)
