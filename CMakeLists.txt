@@ -8,6 +8,7 @@ option(USE_CUDA     "Enable CUDA support" OFF)
 option(USE_CUBLAS   "Enable CUBLAS support" OFF)
 option(USE_OPENMP_GPU "Enable OpenMP GPU support" OFF)
 option(USE_EIGEN "Use Eigen3 library" OFF)
+option(TRANSPOSED_RATE_MATRIX "Use transposed rate matrix" OFF)
 
 option(PROFILE "Enable profiling" OFF)
 
@@ -203,6 +204,14 @@ else()
 endif ()
 
 ##################################################################
+
+# Other options
+if (TRANSPOSED_RATE_MATRIX)
+    message("Transposed Rate Matrix : Yes")
+    add_definitions(-DTRANSPOSED_RATE_MATRIX)
+else()
+    message("Transposed Rate Matrix : NONE")
+endif ()
 
 add_executable(gpulcal ${SRC})
 
