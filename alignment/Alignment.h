@@ -44,8 +44,8 @@ public:
      * @param pattern_str Encoded sequence at a column (e.g., "0123")
      * @param freq How many times this pattern appears
      */
-    void addPattern(const string& pattern_str, int freq = 1) {
-        patterns.emplace_back(pattern_str, freq);
+    void addPattern(const std::vector<int> pattern_vec, int freq = 1) {
+        patterns.emplace_back(pattern_vec, freq);
     }
 
     /**

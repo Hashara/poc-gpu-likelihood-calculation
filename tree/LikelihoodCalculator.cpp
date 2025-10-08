@@ -50,58 +50,21 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
 
     Matrix& L = node->partialLikelihood;
 
-
-    int* tipState = new int[numPatterns];
-
-    if (Params::instance().seq_type == SEQ_DNA) {
-        for (int p = 0; p < numPatterns; ++p) {
-            const char c = aln_->patterns[p][taxonIndex];
-            const int s = static_cast<int>(c) - static_cast<int>('0');
-            tipState[p] = s;  // 0..3
-        }
-    } else {
-        for (int p = 0; p < numPatterns; ++p) {
-            const char c = aln_->patterns[p][taxonIndex];
-            int s;
-            if (c >= '0' && c <= '9') s = c - '0';
-            else if (c >= 'A' && c <= 'J') s = c - 'A' + 10;
-            else s = 20; // unknown
-            tipState[p] = s;  // 0..19
-        }
-    }
     double* l = L.data();
+
     const size_t sz = numStates * numPatterns;
 
     #pragma acc enter data create(l[0:sz]) async(3)
-    #pragma acc enter data copyin(tipState[0:numPatterns]) async(3)
 
     #pragma acc wait(3)
 
-    if (Params::instance().seq_type == SEQ_DNA) {
+    std::fill(l, l + numPatterns, 0.0);
 
-    #pragma acc parallel loop present(l[0:sz], tipState[0:numPatterns]) async(1)
-        for (int p = 0; p < numPatterns; ++p) {
-            const int s = tipState[p];
-            const size_t base = static_cast<size_t>(p) * numStates;
-
-            // Branchless-ish writes; each becomes 0.0 or 1.0
-            l[base + 0] = (s == 0) ? 1.0 : 0.0;
-            l[base + 1] = (s == 1) ? 1.0 : 0.0;
-            l[base + 2] = (s == 2) ? 1.0 : 0.0;
-            l[base + 3] = (s == 3) ? 1.0 : 0.0;
-        }
-    } else {
-        #pragma acc parallel loop present(l[0:sz], tipState[0:numPatterns]) async(1)
-        for (int p = 0; p < numPatterns; ++p) {
-            const int s = tipState[p];
-            const size_t base = static_cast<size_t>(p) * numStates;
-
-            // Branchless-ish writes; each becomes 0.0 or 1.0
-            for (int k = 0; k < numStates; ++k) {
-                l[base + k] = (s == k) ? 1.0 : 0.0;
-            }
-        }
+    for (int p = 0; p < numPatterns; ++p) {
+        l[p * numStates + aln_->patterns[p].states[taxonIndex]] = 1.0;
     }
+
+    #pragma acc update device(l[0:sz]) async(3)
 
     nvtxRangePop();
 #else
@@ -110,75 +73,13 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     Matrix& L = node->partialLikelihood;
 
     double *l = L.data();
+    std::fill(l, l + numPatterns, 0.0);
 
-    std::vector<int> tipState(numPatterns);
-
-    if (Params::instance().seq_type == SEQ_DNA) {
-        for (int p = 0; p < numPatterns; ++p) {
-            const char c = aln_->patterns[p][taxonIndex];
-            const int s = static_cast<int>(c) - static_cast<int>('0');
-            if (static_cast<unsigned>(s) > 3u) {
-                throw std::runtime_error("Non-digit or out-of-range state at pattern " + std::to_string(p));
-            }
-            tipState[p] = s;
-        }
-
-        // --- branchless basis columns (32 bytes each) ---
-        alignas(64) static const double BASIS[4][4] = {
-                {1.0, 0.0, 0.0, 0.0},  // state 0
-                {0.0, 1.0, 0.0, 0.0},  // state 1
-                {0.0, 0.0, 1.0, 0.0},  // state 2
-                {0.0, 0.0, 0.0, 1.0}   // state 3
-        };
-
-        // --- fill columns; column-major index base = p*numStates ---
-        for (int p = 0; p < numPatterns; ++p) {
-            const int s = tipState[p];
-            std::memcpy(&l[p * numStates], BASIS[s], 4 * sizeof(double));
-        }
-    } else {
-        for (int p = 0; p < numPatterns; ++p) {
-            const char c = aln_->patterns[p][taxonIndex];
-            int s;
-            if (c >= '0' && c <= '9') s = c - '0';
-            else if (c >= 'A' && c <= 'J') s = c - 'A' + 10;
-
-            if (static_cast<unsigned>(s) >= 20u) {
-                throw std::runtime_error("Non-digit or out-of-range state at pattern " + std::to_string(p));
-            }
-            tipState[p] = s;
-        }
-
-        // --- branchless basis columns (160 bytes each) ---
-        alignas(64) static const double BASIS_AA[20][20] = {
-                {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 0: A
-                {0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 1: R
-                {0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 2: N
-                {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 3: D
-                {0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 4: C
-                {0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 5: Q
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 6: E
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 7: G
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 8: H
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 9: I
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 10: L
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 11: K
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 12: M
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 13: F
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0}, // state 14: P
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0}, // state 15: S
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0}, // state 16: T
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0}, // state 17: W
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0}, // state 18: Y
-                {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0} // state 19: V
-        };
-
-        // --- fill columns; column-major index base = p*numStates ---
-        for (int p = 0; p < numPatterns; ++p) {
-            const int s = tipState[p];
-            std::memcpy(&l[p * numStates], BASIS_AA[s], 20 * sizeof(double));
-        }
+    for (int p = 0; p < numPatterns; ++p) {
+        l[p * numStates + aln_->patterns[p].states[taxonIndex]] = 1.0;
     }
+
+
 #endif
 #ifdef VERBOSE
     cout << "Tip likelihood for " << taxonName << ":\n";
@@ -458,7 +359,7 @@ LikelihoodCalculator::buildTipLikelihoodBounded(const std::string &taxonName, si
 
     Matrix L(numStates, numPatterns);
     for (size_t p = start; p < end; ++p) {
-        int state = aln_->patterns[p][taxonIndex] - '0';  // Assumes pattern is a string of chars
+        int state = aln_->patterns[p].states[taxonIndex];
         for (int s = 0; s < numStates; ++s) {
             L(s, p - start) = (s == state) ? 1.0 : 0.0;
         }
