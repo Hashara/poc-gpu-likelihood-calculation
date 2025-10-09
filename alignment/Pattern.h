@@ -14,12 +14,12 @@ using namespace std;
 class Pattern {
 public:
     int frequency;  // How many times this pattern occurs in the alignment
-    std::vector<int> states;
+    std::vector<std::uint8_t> states;
 
     // Default constructor
     Pattern() : frequency(0) {}
 
-    explicit Pattern(const std::vector<int>& v, int freq = 1)
+    explicit Pattern(const std::vector<uint8_t>& v, int freq = 1)
             : states(v.begin(), v.end()), frequency(freq) {}
 
 

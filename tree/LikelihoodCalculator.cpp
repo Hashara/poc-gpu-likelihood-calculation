@@ -11,6 +11,8 @@
 #endif
 #define COMPOSITE_HADAMARD
 
+using namespace std;
+
 /**
  * Constructor
  * @param tree
@@ -47,40 +49,38 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
 #ifdef USE_OPENACC
     nvtxRangePushA("buildTipLikelihood");
     node->partialLikelihood.resize(numStates, numPatterns);
-
     Matrix& L = node->partialLikelihood;
-
-    double* l = L.data();
-
-    const size_t sz = numStates * numPatterns;
+    double* __restrict__ l = L.data();
+    const size_t sz = (size_t)numStates * (size_t)numPatterns;
 
     #pragma acc enter data create(l[0:sz]) async(3)
 
-    int* tip = new int[numPatterns];
-    for (int p = 0; p < numPatterns; ++p)
-        tip[p] = aln_->patterns[p].states[taxonIndex];
+    std::vector<uint8_t> tip8(numPatterns);
 
-    #pragma acc enter data copyin(tip[0:numPatterns]) async(5)
-
-    #pragma acc parallel loop present(l)
-        for (size_t i = 0; i < sz; ++i) l[i] = 0.0;
-
-    #pragma acc wait(5)
-
-
-    // build one-hot on device in a single kernel
-    #pragma acc parallel loop gang vector present(l, tip)
     for (int p = 0; p < numPatterns; ++p) {
-        const int s_star = tip[p];
-        if (0 <= s_star && s_star < numStates)
-            l[(size_t)p * numStates + s_star] = 1.0;
+        int s = aln_->patterns[p].states[taxonIndex];
+        tip8[p] = (s < numStates) ? s : (uint8_t)0xFF;
+    }
+    uint8_t* tip8_ptr = tip8.data();
 
+    #pragma acc enter data copyin(tip8_ptr[0:numPatterns]) async(5)
+
+    // One-pass write: fewer stores than zero+scatter
+    #pragma acc parallel loop collapse(2) gang vector present(l, tip8_ptr) async(3) wait(5)
+    for (int p = 0; p < numPatterns; ++p) {
+        for (int s = 0; s < numStates; ++s) {
+            uint8_t ss = tip8_ptr[p];
+            // ambiguous => all-ones; else one-hot
+            l[(size_t)p * numStates + s] = (ss == 0xFF) ? 1.0 : (s == (int)ss ? 1.0 : 0.0);
+        }
     }
 
-    #pragma acc exit data delete(tip[0:numPatterns]) async(5)
-    delete[] tip;
+    // Drop device copy of the temporary tip; wait before host frees tip8 memory
+    #pragma acc exit data delete(tip8_ptr[0:numPatterns]) async(7)
+    #pragma acc wait(7)
 
     nvtxRangePop();
+
 #else
     node->partialLikelihood.resize(numStates, numPatterns);
 

@@ -9,13 +9,14 @@
 #include "alignmentIO.h"
 #include "../Params.h"
 #include <cctype>
+#include <array>
 
 using namespace std;
 
-unordered_map<char, int> char_map;
+static std::array<std::uint8_t, 256> char_map; // use uint8_t to save space
 
 void initCharMap() {
-    char_map.clear();
+    char_map.fill(0xFF); // 0xFF for unknowns
 
     if (Params::instance().seq_type == SEQ_DNA) {
         // DNA bases: 0..3 + 4 for unknown
@@ -30,32 +31,28 @@ void initCharMap() {
         // Amino acids: 0..19 + 20 for unknown
         const string upper = "ARNDCQEGHILKMFPSTWYV";
         for (size_t i = 0; i < upper.size(); ++i) {
-            char_map[upper[i]] = static_cast<int>(i);
-            char_map[tolower(upper[i])] = static_cast<int>(i);
+            char_map[(unsigned char)upper[i]] = (uint8_t)i;
+            char_map[(unsigned char)tolower(upper[i])] = (uint8_t)i;
         }
 
         // Unknowns (char_map, B, Z, J, U, O, -, etc.)
         const std::string unknowns = "char_mapBZJUO-";
-        for (char c : unknowns)
+        for (unsigned char c : unknowns)
             char_map[c] = char_map[std::tolower(c)] = 20;
     }
 }
 
-struct VecIntHash {
-    std::size_t operator()(const std::vector<int>& v) const noexcept {
-        std::size_t h = 0;
-        for (int x : v)
-            h ^= std::hash<int>{}(x) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+struct VecU8Hash {
+    std::size_t operator()(const std::vector<std::uint8_t>& v) const noexcept {
+        std::size_t h = 1469598103934665603ull; // FNV-1a 64-bit
+        for (auto b : v) { h ^= b; h *= 1099511628211ull; }
         return h;
     }
 };
-
-struct VecIntEq {
-    bool operator()(const std::vector<int>& a, const std::vector<int>& b) const noexcept {
-        return a == b;
-    }
+struct VecU8Eq {
+    bool operator()(const std::vector<std::uint8_t>& a,
+                    const std::vector<std::uint8_t>& b) const noexcept { return a == b; }
 };
-
 
 
 void readPhylipFile(const string& filename, Alignment& aln) {
@@ -80,20 +77,25 @@ void readPhylipFile(const string& filename, Alignment& aln) {
     }
 
     initCharMap();
-    unordered_map<vector<int>, int, VecIntHash, VecIntEq> pattern_map;
+//    unordered_map<vector<int>, int, VecIntHash, VecIntEq> pattern_map;
 
-    for (size_t site = 0; site < num_sites; ++site) {
-        vector<int> encoded_col(num_taxa);
-        for (size_t t = 0; t < num_taxa; ++t) {
-            encoded_col[t] = char_map[raw_seqs[t][site]];
+    unordered_map<std::vector<std::uint8_t>, int, VecU8Hash, VecU8Eq> pattern_map;
+    pattern_map.reserve(num_sites * 2);
+
+    std::vector<std::uint8_t> encoded_col; encoded_col.resize(num_taxa);
+
+    for (std::size_t site = 0; site < num_sites; ++site) {
+        for (std::size_t t = 0; t < num_taxa; ++t) {
+            unsigned char ch = static_cast<unsigned char>(raw_seqs[t][site]);
+            std::uint8_t code = char_map[ch];
+            if (code == 0xFF) code = (Params::instance().seq_type == SEQ_DNA) ? 4 : 20;
+            encoded_col[t] = code;
         }
-        pattern_map[encoded_col]++;
-        aln.num_sites++;  // Every column contributes to total site count
+        pattern_map[encoded_col]++;   // hashes bytes
+        ++aln.num_sites;
     }
-
-    // Convert map to patterns
-    for (const auto& [pattern_vec, freq] : pattern_map) {
-        aln.addPattern(pattern_vec, freq);
+    for (const auto& [pat, freq] : pattern_map) {
+        aln.addPattern(pat, freq);
     }
 
     infile.close();
