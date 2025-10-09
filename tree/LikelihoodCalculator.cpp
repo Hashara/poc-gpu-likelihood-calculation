@@ -60,7 +60,7 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     for (int p = 0; p < numPatterns; ++p)
         tip[p] = aln_->patterns[p].states[taxonIndex];
 
-    #pragma acc enter data copyin(tip[0:numPatterns]) aync(5)
+    #pragma acc enter data copyin(tip[0:numPatterns]) async(5)
 
     #pragma acc parallel loop present(l)
         for (size_t i = 0; i < sz; ++i) l[i] = 0.0;
