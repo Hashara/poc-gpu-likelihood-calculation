@@ -7,21 +7,21 @@
 
 #include <vector>
 #include <cstdint>
-#include <string>
 
 using namespace std;
 
 
-class Pattern : public string {
+class Pattern {
 public:
     int frequency;  // How many times this pattern occurs in the alignment
+    std::vector<std::uint8_t> states;
 
     // Default constructor
-    Pattern() : string(), frequency(0) {}
+    Pattern() : frequency(0) {}
 
-    // Constructor with pattern and optional frequency
-    Pattern(const string& pattern, int freq = 1)
-            : string(pattern), frequency(freq) {}
+    explicit Pattern(const std::vector<uint8_t>& v, int freq = 1)
+            : states(v.begin(), v.end()), frequency(freq) {}
+
 
 };
 

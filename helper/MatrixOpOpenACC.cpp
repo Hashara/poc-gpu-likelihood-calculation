@@ -84,16 +84,21 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
 
     size_t M = A.rows(), N = A.cols(), P = B.cols();
 
-    Matrix R1(M, P);
-    Matrix R2(M, P);
     R.resize(M, P);
 
-    const double *a = A.data();
-    const double *b = B.data();
-    const double *c = C.data();
-    const double *d = D.data();
+//    const double *a = A.data();
+//    const double *b = B.data();
+//    const double *c = C.data();
+//    const double *d = D.data();
+//
+//    double *r = R.data();
 
-    double *r = R.data();
+   // https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/#:~:text=Using%20the%20__restrict__,in%20the%20provided%20CPU%20example.
+    const double * __restrict__ a = A.data();
+    const double * __restrict__ b = B.data();
+    const double * __restrict__ c = C.data();
+    const double * __restrict__ d = D.data();
+    double * __restrict__ r = R.data();
 
     size_t Asz = M * N;
     size_t Bsz = N * P;
@@ -139,7 +144,7 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
         }
     }
 
-#pragma data exit delete(a[0:Asz], c[0:Asz]) async
+#pragma acc exit data delete(a[0:Asz], c[0:Asz]) async
     nvtxRangePop();
 //    return R;
 }
@@ -172,7 +177,7 @@ void MatrixOpOpenACC::multiplyInPlace(const Matrix &A, const Matrix &B, Matrix &
                 c[j*M + i] = sum;                     // R(i,j)
             }
         }
-#pragma data exit delete(a[0:Asz], b[0:Bsz]) async
+#pragma acc exit data delete(a[0:Asz], b[0:Bsz]) async
     }
 }
 
