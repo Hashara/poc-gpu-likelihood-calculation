@@ -56,15 +56,25 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
 
     #pragma acc enter data create(l[0:sz]) async(3)
 
-    #pragma acc wait(3)
+    int* tip = new int[numPatterns];
+    for (int p = 0; p < numPatterns; ++p)
+        tip[p] = aln_->patterns[p].states[taxonIndex];
 
-    std::fill(l, l + numPatterns, 0.0);
+    #pragma acc enter data copyin(tip[0:numPatterns])
 
+    // build one-hot on device in a single kernel
+    #pragma acc parallel loop gang vector present(l, tip)
     for (int p = 0; p < numPatterns; ++p) {
-        l[p * numStates + aln_->patterns[p].states[taxonIndex]] = 1.0;
+        const int base = p * numStates;
+        // write the full block so writes are contiguous/coalesced
+        #pragma acc loop vector
+        for (int s = 0; s < numStates; ++s) {
+            l[base + s] = (s == tip[p]) ? 1.0 : 0.0;
+        }
     }
 
-    #pragma acc update device(l[0:sz]) async(3)
+    #pragma acc exit data delete(tip[0:numPatterns]) async(3)
+    delete[] tip;
 
     nvtxRangePop();
 #else
