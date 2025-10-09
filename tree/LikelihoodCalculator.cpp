@@ -71,7 +71,7 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     // build one-hot on device in a single kernel
     #pragma acc parallel loop gang vector present(l, tip)
     for (int p = 0; p < numPatterns; ++p) {
-        const int s_star = tip_ptr[p];
+        const int s_star = tip[p];
         if (0 <= s_star && s_star < numStates)
             l[(size_t)p * numStates + s_star] = 1.0;
 
