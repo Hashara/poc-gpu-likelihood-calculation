@@ -71,7 +71,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "NVHPC") # NVIDIA HPC SDK compiler
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc -gpu=cc80,debug -O3 -lineinfo -Minfo=accel")
             message("Target: A100 GPU")
         else ()
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc -gpu=cc70,debug -O3 -lineinfo -Minfo=accel")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -acc -gpu=cc70,debug,lineinfo -O3 -Minfo=accel")
         endif ()
     elseif(ENERGY_MEASUREMENT AND USE_OPENACC)
         if (TARGET_A100)
