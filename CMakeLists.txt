@@ -52,6 +52,7 @@ set(SRC
         Params.h
         model/ModelPOISSON.cpp
         model/ModelPOISSON.h
+        tree/Scaling.h
 )
 ######################################################
 # setup compilers

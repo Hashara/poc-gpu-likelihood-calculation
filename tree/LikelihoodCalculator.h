@@ -19,7 +19,7 @@ public:
     LikelihoodCalculator(Tree* tree, Alignment* aln, Model* model);
 
     // Traverse the tree in post-order and compute partial likelihoods
-    void traverseAndCompute(Node* node);
+    void traverseAndCompute(Node* node, uint8_t* scale_count);
 
     void buildPostorder(Node* n, std::vector<Node*>& out);
 
@@ -36,7 +36,7 @@ public:
     void computeTipLikelihoodBounded(Node* node, size_t start, size_t end, int packet_id);
 
     // Compute partial likelihood for an internal node using matrix ops
-    void computeInternalLikelihood(Node* node);
+    void computeInternalLikelihood(Node* node, uint8_t* scale_count);
 
     void computeInternalLikelihoodBounded(Node* node, int packet_id);
 
@@ -65,7 +65,7 @@ public:
      * @param rootL The likelihood matrix from the root node
      * @return The computed likelihood value
      */
-    double computeSiteLikelihoodFromRoot(const Matrix& rootL);
+    double computeSiteLikelihoodFromRoot(const Matrix& rootL, uint8_t* scale_count);
 
     void setChunkSize(int chunkSize);
 
