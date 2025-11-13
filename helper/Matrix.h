@@ -68,7 +68,7 @@ public:
     Matrix hadamard(const Matrix& other) const;
 
 #ifdef USE_OPENACC
-    void compositeHadamard(const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R) const;
+    void compositeHadamard(const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R, uint8_t* scale_count) const;
     void multiplyInPlace(const Matrix& B, Matrix& R) const;
 #endif
 

@@ -118,7 +118,7 @@ void LikelihoodCalculator::computeTipLikelihood(Node *node) {
  * computes L = (P1 * L1) hadamard (P2 * L2)
  * @param node
  */
-void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
+void LikelihoodCalculator::computeInternalLikelihood(Node *node, uint8_t* scale_count) {
     if (node->isLeaf()) return;
     int numStates = Params::instance().numStates;
 
@@ -147,7 +147,7 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node) {
     node->partialLikelihood = PL1.hadamard(PL2);
 #endif
 #else
-    P1.compositeHadamard(L1, P2, L2, node->partialLikelihood);
+    P1.compositeHadamard(L1, P2, L2, node->partialLikelihood, scale_count);
 #endif
     node->isPartialLikelihoodCalculated = true;
 }
@@ -181,7 +181,7 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
     node->partialLikelihood = PL1.hadamard(PL2);
 #endif
 #else
-    P1.compositeHadamard(L1, P2, L2, node ->partialLikelihood);
+    P1.compositeHadamard(L1, P2, L2, node ->partialLikelihood, nullptr);
 #endif
     node->completedPackets.insert(packet_id);
 
@@ -213,8 +213,18 @@ void LikelihoodCalculator::traverseAndCompute(Node *node) {
 }
 */
 
-void LikelihoodCalculator::traverseAndCompute(Node* root) {
+void LikelihoodCalculator::traverseAndCompute(Node* root, uint8_t* scale_count) {
     std::vector<Node*> post;
+
+    size_t scale_count_size = aln_->patterns.size();
+#ifdef USE_OPENACC
+    #pragma acc enter data create(scale_count[0:scale_count_size]) async(1)
+    #pragma acc parallel loop present(scale_count[0:scale_count_size]) async(1)
+    for (size_t i = 0; i < scale_count_size; ++i)
+        scale_count[i] = 0;
+#else
+    std::fill(scale_count, scale_count + scale_count_size , 0);
+#endif
     buildPostorder(root, post);
 
     // Phase 1: tips (independent)
@@ -233,7 +243,7 @@ void LikelihoodCalculator::traverseAndCompute(Node* root) {
     // Phase 2: internal nodes
     for (Node* n : post) {
         if (!n->isPartialLikelihoodCalculated && !n->isLeaf()) {
-            computeInternalLikelihood(n);
+            computeInternalLikelihood(n, scale_count);
             n->isPartialLikelihoodCalculated = true;
         }
     }
@@ -301,8 +311,11 @@ double LikelihoodCalculator::computeLogLikelihood() {
 #endif
         }
     } else {
-        traverseAndCompute(tree_->root);
-        logL = computeSiteLikelihoodFromRoot(tree_->root->partialLikelihood);
+        size_t scale_count_size = aln_->patterns.size();
+        uint8_t scale_count[scale_count_size];
+
+        traverseAndCompute(tree_->root, scale_count);
+        logL = computeSiteLikelihoodFromRoot(tree_->root->partialLikelihood, scale_count);
     }
     return logL;
 }
@@ -339,7 +352,7 @@ double LikelihoodCalculator::computeLikelihoodFromBound(size_t start, size_t end
 
     const Matrix &rootL = tree_->root->partialLikelihood;
 
-    return computeSiteLikelihoodFromRoot(rootL);
+    return computeSiteLikelihoodFromRoot(rootL, nullptr);
 
 }
 
@@ -407,7 +420,7 @@ void LikelihoodCalculator::setIsBounded(bool isBounded) {
     isBounded_ = isBounded;
 }
 
-double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL) {
+double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL, uint8_t* scale_count) {
     double logL = 0.0;
 
 #ifdef VERBOSE
@@ -447,7 +460,7 @@ double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL) 
     #pragma acc parallel loop reduction(+:logL) present(sl[0:numPatterns], freqData[0:numPatterns])
     for (int j = 0; j < numPatterns; ++j) {
         double siteLikelihood = sl[j];  // 1-row matrix, first row
-        logL += freqData[j] * std::log(siteLikelihood);
+        logL += freqData[j] * (std::log(siteLikelihood) + scale_count[j] * LOG_SCALING_THRESHOLD);
     }
 
     #pragma acc exit data delete(sl[0:numPatterns], freqData[0:numPatterns]) async

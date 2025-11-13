@@ -97,8 +97,8 @@ void Matrix::resize(size_t rows, size_t cols) {
 }
 
 #ifdef USE_OPENACC
-void Matrix::compositeHadamard(const Matrix &B, const Matrix &C, const Matrix &D, Matrix& R) const {
-    return getBackend(m_opType)->compositehadamard(*this, B, C, D, R);
+void Matrix::compositeHadamard(const Matrix &B, const Matrix &C, const Matrix &D, Matrix& R, uint8_t* scale_count) const {
+    return getBackend(m_opType)->compositehadamard(*this, B, C, D, R, scale_count);
 }
 
 void Matrix::multiplyInPlace(const Matrix &B, Matrix &R) const {

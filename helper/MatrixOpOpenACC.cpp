@@ -72,7 +72,7 @@ Matrix MatrixOpOpenACC::hadamard(const Matrix &A, const Matrix &B) {
 
 
 void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
-                                          const Matrix &C, const Matrix &D, Matrix &R) {
+                                          const Matrix &C, const Matrix &D, Matrix &R, uint8_t* scale_count) {
     // A, C are transition matrices
     // B, D are likelihood matrices
     nvtxRangePushA("MatrixOpOpenACC::compositehadamard");
@@ -107,19 +107,21 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
 #pragma acc enter data create(r[0:Csz]) // Pre-create output matrix on device
 
 // Single kernel for both multiplications and Hadamard product
-#pragma acc data present(a[0:Asz], b[0:Bsz], c[0:Asz], d[0:Bsz], r[0:Csz])
+#pragma acc data present(a[0:Asz], b[0:Bsz], c[0:Asz], d[0:Bsz], r[0:Csz], scale_count[0:P])
     {
         // One kernel, two dot-products, one write
 
 //#pragma acc kernels // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/04-Parallelize.html#the-kernels-construct
-#pragma acc parallel loop collapse(2) gang vector vector_length(128) // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/06-Loops.html
+#pragma acc parallel loop gang vector vector_length(128) // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/06-Loops.html
         for (size_t j = 0; j < P; ++j) {
+            const double * __restrict__ local_b = &b[j*N];
+            const double * __restrict__ local_d = &d[j*N];
+
+            #pragma acc loop vector
             for (size_t i = 0; i < M; ++i) {
                 double s1 = 0.0, s2 = 0.0;
 
 #ifdef TRANSPOSED_RATE_MATRIX
-                const double *local_b = &b[j*N]; // pointer to start of column j in B
-                const double *local_d = &d[j*N]; // pointer to start of column j in D
                 const double *local_a = &a[i*N]; // pointer to start of row i in A (transposed)
                 const double *local_c = &c[i*N]; // pointer to start of row i in C (transposed)
 
@@ -130,8 +132,6 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
                     s2 += local_c[k] * local_d[k];  // C(i,k) * D(k,j)
                 }
 #else
-                const double *local_b = &b[j*N]; // pointer to start of column j in B
-                const double *local_d = &d[j*N]; // pointer to start of column j in D
 #pragma acc loop seq
                 for (size_t k = 0; k < N; ++k) {
                     // column-major indexing
@@ -140,6 +140,22 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
                 }
 #endif
                 r[j*M + i] = s1 * s2;
+            }
+            double max_abs = 0.0;
+#pragma acc loop reduction(max:max_abs)
+            for (size_t i = 0; i < M; ++i) {
+                double v = fabs(r[j*M + i]);
+                if (v > max_abs) max_abs = v;
+            }
+
+            // 2) rescale by 2^256 if below threshold
+            if (max_abs < SCALING_THRESHOLD) {
+#pragma acc loop
+                for (size_t i = 0; i < M; ++i) {
+                    // scalbn(x,k) == x * 2^k (device-friendly)
+                    r[j * M + i] = scalbn(r[j * M + i], SCALING_THRESHOLD_EXP);
+                }
+                scale_count[j] += 1;
             }
         }
     }
