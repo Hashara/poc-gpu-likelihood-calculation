@@ -23,6 +23,9 @@ Matrix MatrixOpCPU::multiply(const Matrix &A, const Matrix &B) {
 }
 
 Matrix MatrixOpCPU::hadamard(const Matrix &A, const Matrix &B) {
+    std::cout << "num states in CPU hadamard: " << numStates << std::endl;
+    std::cout << "Matrix A size: " << A.rows() << " x " << A.cols() << std::endl;
+
     if (A.rows() != B.rows() || A.cols() != B.cols()) {
         throw std::invalid_argument("Matrix dimensions do not match for Hadamard product.");
     }

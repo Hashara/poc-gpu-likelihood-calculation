@@ -7,7 +7,6 @@
 
 #include "Matrix.h"
 #include "../tree/Scaling.h"
-
 #ifndef USE_EIGEN
 
 class MatrixOp {
@@ -19,6 +18,11 @@ public:
     virtual void multiplyInPlace(const Matrix& A, const Matrix& B, Matrix& R) = 0;
 #endif // USE_OPENACC
     virtual ~MatrixOp() = default;
+    inline static int numStates = 0;
+    //setter for the numstates
+    static void setNumStates(int n) {
+        numStates = n;
+    }
 };
 
 #endif // USE_EIGEN
