@@ -28,9 +28,9 @@ Matrix MatrixOpOpenACC::multiply(const Matrix &A, const Matrix &B) {
 #pragma acc loop vector reduction(+:sum)
                 for (size_t k = 0; k < N; ++k) {
                     // column-major indexing
-                    sum += a[k*M + i] * b[j*N + k];
+                    sum += a[k * M + i] * b[j * N + k];
                 }
-                c[j*M + i] = sum;
+                c[j * M + i] = sum;
             }
         }
     }
@@ -55,13 +55,13 @@ Matrix MatrixOpOpenACC::hadamard(const Matrix &A, const Matrix &B) {
     double *c = C.data();
 
 
-    #pragma acc data copyin(a[0:Asz], b[0:Asz]) copyout(c[0:Asz])
+#pragma acc data copyin(a[0:Asz], b[0:Asz]) copyout(c[0:Asz])
     {
-        #pragma acc parallel loop collapse(2) gang vector
+#pragma acc parallel loop collapse(2) gang vector
         for (size_t j = 0; j < N; ++j) {
             for (size_t i = 0; i < M; ++i) {
                 // column-major: idx = j*M + i
-                size_t idx = j*M + i;
+                size_t idx = j * M + i;
                 c[idx] = a[idx] * b[idx];
             }
         }
@@ -72,7 +72,7 @@ Matrix MatrixOpOpenACC::hadamard(const Matrix &A, const Matrix &B) {
 
 
 void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
-                                          const Matrix &C, const Matrix &D, Matrix &R, uint8_t* scale_count) {
+                                        const Matrix &C, const Matrix &D, Matrix &R, uint8_t *scale_count) {
     // A, C are transition matrices
     // B, D are likelihood matrices
     nvtxRangePushA("MatrixOpOpenACC::compositehadamard");
@@ -81,12 +81,12 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
 
     R.resize(numStates, P);
 
-   // https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/#:~:text=Using%20the%20__restrict__,in%20the%20provided%20CPU%20example.
-    const double * __restrict__ a = A.data();
-    const double * __restrict__ b = B.data();
-    const double * __restrict__ c = C.data();
-    const double * __restrict__ d = D.data();
-    double * __restrict__ r = R.data();
+    // https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/#:~:text=Using%20the%20__restrict__,in%20the%20provided%20CPU%20example.
+    const double *__restrict__ a = A.data();
+    const double *__restrict__ b = B.data();
+    const double *__restrict__ c = C.data();
+    const double *__restrict__ d = D.data();
+    double *__restrict__ r = R.data();
 
     size_t Asz = numStates * numStates;
     size_t Bsz = numStates * P;
@@ -101,10 +101,10 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
 //#pragma acc kernels // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/04-Parallelize.html#the-kernels-construct
 #pragma acc parallel loop gang vector vector_length(128) // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/06-Loops.html
         for (size_t j = 0; j < P; ++j) {
-            const double * __restrict__ local_b = &b[j*numStates];
-            const double * __restrict__ local_d = &d[j*numStates];
+            const double *__restrict__ local_b = &b[j * numStates];
+            const double *__restrict__ local_d = &d[j * numStates];
 
-            #pragma acc loop vector
+#pragma acc loop vector
             for (size_t i = 0; i < numStates; ++i) {
                 double s1 = 0.0, s2 = 0.0;
 
@@ -112,7 +112,7 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
                 const double *local_a = &a[i*numStates]; // pointer to start of row i in A (transposed)
                 const double *local_c = &c[i*numStates]; // pointer to start of row i in C (transposed)
 
-                #pragma acc loop seq
+#pragma acc loop reduction(+:s1,s2)
                 for (size_t k = 0; k < numStates; ++k) {
                     // column-major indexing
                     s1 += local_a[k] * local_b[k];  // A(i,k) * B(k,j)
@@ -122,19 +122,23 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
 #pragma acc loop reduction(+:s1,s2)
                 for (size_t k = 0; k < numStates; ++k) {
                     // column-major indexing
-                    s1 += a[k*numStates + i] * local_b[k];  // A(i,k) * B(k,j)
-                    s2 += c[k*numStates + i] * local_d[k];  // C(i,k) * D(k,j)
+                    s1 += a[k * numStates + i] * local_b[k];  // A(i,k) * B(k,j)
+                    s2 += c[k * numStates + i] * local_d[k];  // C(i,k) * D(k,j)
                 }
 #endif
-                r[j*numStates + i] = s1 * s2;
+                r[j * numStates + i] = s1 * s2;
             }
+        }
+
+
+#pragma acc parallel loop gang vector present(r[0:Bsz], scale_count[0:P])
+        for (size_t j = 0; j < P; ++j) {
             double max_abs = 0.0;
 #pragma acc loop reduction(max:max_abs)
             for (size_t i = 0; i < numStates; ++i) {
-                double v = fabs(r[j*numStates + i]);
+                double v = fabs(r[j * numStates + i]);
                 if (v > max_abs) max_abs = v;
             }
-
             // 2) rescale by 2^256 if below threshold
             if (max_abs < SCALING_THRESHOLD) {
 #pragma acc loop
@@ -146,7 +150,6 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
             }
         }
     }
-
 #pragma acc exit data delete(a[0:Asz], c[0:Asz]) async
     nvtxRangePop();
 //    return R;
@@ -175,9 +178,9 @@ void MatrixOpOpenACC::multiplyInPlace(const Matrix &A, const Matrix &B, Matrix &
 #pragma acc loop vector reduction(+:sum)
                 for (size_t k = 0; k < N; ++k) {
                     // column-major addressing
-                    sum += a[k*M + i] * b[j*N + k];   // A(i,k) * B(k,j)
+                    sum += a[k * M + i] * b[j * N + k];   // A(i,k) * B(k,j)
                 }
-                c[j*M + i] = sum;                     // R(i,j)
+                c[j * M + i] = sum;                     // R(i,j)
             }
         }
 #pragma acc exit data delete(a[0:Asz], b[0:Bsz]) async
