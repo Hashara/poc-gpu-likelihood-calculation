@@ -112,7 +112,6 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
                 const double *local_a = &a[i*numStates]; // pointer to start of row i in A (transposed)
                 const double *local_c = &c[i*numStates]; // pointer to start of row i in C (transposed)
 
-#pragma acc loop reduction(+:s1,s2)
                 for (size_t k = 0; k < numStates; ++k) {
                     // column-major indexing
                     s1 += local_a[k] * local_b[k];  // A(i,k) * B(k,j)
