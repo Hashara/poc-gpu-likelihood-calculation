@@ -118,7 +118,6 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
                     s2 += local_c[k] * local_d[k];  // C(i,k) * D(k,j)
                 }
 #else
-#pragma acc loop reduction(+:s1,s2)
                 for (size_t k = 0; k < numStates; ++k) {
                     // column-major indexing
                     s1 += a[k * numStates + i] * local_b[k];  // A(i,k) * B(k,j)
