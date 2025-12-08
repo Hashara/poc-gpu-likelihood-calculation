@@ -139,7 +139,7 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
             }
             // 2) rescale by 2^256 if below threshold
             if (max_abs < SCALING_THRESHOLD) {
-#pragma acc loop
+//#pragma acc loop
                 for (size_t i = 0; i < numStates; ++i) {
                     // scalbn(x,k) == x * 2^k (device-friendly)
                     r[j * numStates + i] = scalbn(r[j * numStates + i], SCALING_THRESHOLD_EXP);
