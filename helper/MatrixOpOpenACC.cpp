@@ -99,7 +99,7 @@ void MatrixOpOpenACC::compositehadamard(const Matrix &A, const Matrix &B,
         // One kernel, two dot-products, one write
 
 //#pragma acc kernels // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/04-Parallelize.html#the-kernels-construct
-#pragma acc parallel loop gang vector vector_length(128) // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/06-Loops.html
+#pragma acc parallel loop gang // doc: https://openacc-best-practices-guide.readthedocs.io/en/latest/06-Loops.html
         for (size_t j = 0; j < P; ++j) {
             const double *__restrict__ local_b = &b[j * numStates];
             const double *__restrict__ local_d = &d[j * numStates];
