@@ -5,11 +5,10 @@
 #include "LikelihoodCalculator.h"
 #include <cmath>
 #include "../Params.h"
-#ifdef USE_OPENACC
+#if defined(USE_OPENACC) || defined(USE_CUBLAS)
 #include <nvtx3/nvToolsExt.h>
 #include <vector>
 #endif
-#define COMPOSITE_HADAMARD
 
 using namespace std;
 
@@ -137,7 +136,7 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node, uint8_t* scale_
     Matrix P2(numStates, numStates);
     model_->buildTransitionMatrix(right->branchLength, P2);
 
-#if !defined(COMPOSITE_HADAMARD) || !defined(USE_OPENACC)
+#if  !(defined(USE_OPENACC) || defined(USE_CUBLAS))
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;
 
@@ -171,7 +170,7 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node, int pack
     Matrix P1 = model_->getTransitionMatrix(left->branchLength);
     Matrix P2 = model_->getTransitionMatrix(right->branchLength);
 
-#if !defined(COMPOSITE_HADAMARD) || !defined(USE_OPENACC)
+#if  !(defined(USE_OPENACC) || defined(USE_CUBLAS))
     Matrix PL1 = P1 * L1;
     Matrix PL2 = P2 * L2;
 

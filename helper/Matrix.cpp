@@ -96,7 +96,7 @@ void Matrix::resize(size_t rows, size_t cols) {
     m_data = new double[rows * cols];
 }
 
-#ifdef USE_OPENACC
+#if defined(USE_OPENACC) || defined(USE_CUBLAS)
 void Matrix::compositeHadamard(const Matrix &B, const Matrix &C, const Matrix &D, Matrix& R, uint8_t* scale_count) const {
     return getBackend(m_opType)->compositehadamard(*this, B, C, D, R, scale_count);
 }

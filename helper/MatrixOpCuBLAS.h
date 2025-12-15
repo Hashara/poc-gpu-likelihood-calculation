@@ -14,6 +14,11 @@ public:
     ~MatrixOpCuBLAS() override;
     Matrix multiply(const Matrix& A, const Matrix& B) override;
     Matrix hadamard(const Matrix& A, const Matrix& B) override;
+
+#ifdef USE_CUBLAS
+    void compositehadamard(const Matrix& A, const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R, uint8_t* scale_count) override;
+    void multiplyInPlace(const Matrix& A, const Matrix& B, Matrix& R) override;
+#endif // USE_CUBLAS
 private:
     cublasHandle_t handle;
 };

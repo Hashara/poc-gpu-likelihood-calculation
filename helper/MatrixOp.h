@@ -13,7 +13,7 @@ class MatrixOp {
 public:
     virtual Matrix multiply(const Matrix& A, const Matrix& B) = 0;
     virtual Matrix hadamard(const Matrix& A, const Matrix& B) = 0;
-#ifdef USE_OPENACC
+#if defined(USE_OPENACC) || defined(USE_CUBLAS)
     virtual void compositehadamard(const Matrix& A, const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R, uint8_t* scale_count) = 0;
     virtual void multiplyInPlace(const Matrix& A, const Matrix& B, Matrix& R) = 0;
 #endif // USE_OPENACC

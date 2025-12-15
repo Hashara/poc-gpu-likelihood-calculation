@@ -67,7 +67,7 @@ public:
      */
     Matrix hadamard(const Matrix& other) const;
 
-#ifdef USE_OPENACC
+#if defined(USE_OPENACC) || defined(USE_CUBLAS)
     void compositeHadamard(const Matrix& B, const Matrix& C, const Matrix& D, Matrix& R, uint8_t* scale_count) const;
     void multiplyInPlace(const Matrix& B, Matrix& R) const;
 #endif
