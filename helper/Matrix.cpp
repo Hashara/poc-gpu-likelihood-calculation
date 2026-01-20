@@ -29,6 +29,9 @@ Matrix::Matrix(size_t rows, size_t cols)
 }
 
 Matrix::~Matrix() {
+#if defined(USE_CUBLAS)
+    freeDevice();
+#endif
     delete[] m_data;
 }
 
@@ -105,6 +108,68 @@ void Matrix::multiplyInPlace(const Matrix &B, Matrix &R) const {
     return getBackend(m_opType)->multiplyInPlace(*this, B, R);
 }
 #endif
+
+#if defined(USE_CUBLAS)
+
+void Matrix::allocDevice() {
+    const size_t elems = m_rows * m_cols;
+    if (d_data && d_elems == elems) return;
+
+    // if size changed, reallocate
+    if (d_data) {
+        cudaFree(d_data);
+        d_data = nullptr;
+    }
+    d_elems = elems;
+
+    cudaMalloc(&d_data, d_elems * sizeof(double));
+
+    if (!h2d_event) {
+        cudaEventCreateWithFlags(&h2d_event, cudaEventDisableTiming);
+    }
+}
+
+void Matrix::copyHtoDAsync(cudaStream_t stream) {
+    allocDevice();
+    cudaMemcpyAsync(d_data, m_data, d_elems * sizeof(double),
+                    cudaMemcpyHostToDevice, stream);
+    cudaEventRecord(h2d_event, stream);
+}
+
+void Matrix::waitHtoD(cudaStream_t stream) const {
+    if (h2d_event) cudaStreamWaitEvent(stream, h2d_event, 0);
+}
+
+double* Matrix::deviceData() const {
+    return d_data;
+}
+
+void Matrix::freeDevice() {
+    if (d_data) cudaFree(d_data);
+    d_data = nullptr;
+    d_elems = 0;
+
+    if (h2d_event) cudaEventDestroy(h2d_event);
+    h2d_event = nullptr;
+}
+
+void Matrix::copyDtoHAsync(cudaStream_t stream) {
+    if (!d_data) return; // or allocDevice(), but usually you expect device to exist
+    cudaMemcpyAsync(m_data, d_data, d_elems * sizeof(double),
+                    cudaMemcpyDeviceToHost, stream);
+    if (!d2h_event) {
+        cudaEventCreateWithFlags(&d2h_event, cudaEventDisableTiming);
+    }
+    cudaEventRecord(d2h_event, stream);
+}
+
+void Matrix::waitDtoH(cudaStream_t stream) const {
+    if (d2h_event) cudaStreamWaitEvent(stream, d2h_event, 0);
+}
+
+#endif
+
+
 void Matrix::setMOpType(MatrixOpType mOpType) {
     m_opType = mOpType;
 }

@@ -9,6 +9,9 @@
 #include <nvtx3/nvToolsExt.h>
 #include <vector>
 #endif
+#ifdef USE_CUBLAS
+#include "../helper/TipLikelihoodKernel.cuh"
+#endif
 
 using namespace std;
 
@@ -45,9 +48,10 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
         throw std::runtime_error("Taxon name not found in alignment: " + node->name);
     }
 
+    node->partialLikelihood.resize(numStates, numPatterns);
+
 #ifdef USE_OPENACC
     nvtxRangePushA("buildTipLikelihood");
-    node->partialLikelihood.resize(numStates, numPatterns);
     Matrix& L = node->partialLikelihood;
     double* __restrict__ l = L.data();
     const size_t sz = (size_t)numStates * (size_t)numPatterns;
@@ -79,7 +83,50 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     #pragma acc wait(7)
 
     nvtxRangePop();
+#elif defined(USE_CUBLAS)
+    nvtxRangePushA("buildTipLikelihood using CUDA");
+    Matrix& L = node->partialLikelihood;
+    L.allocDevice();                 // allocate device memory
+    double* d_l = L.deviceData();      // device pointer
 
+
+
+    std::vector<uint8_t> tip8(numPatterns);
+
+    for (int p = 0; p < numPatterns; ++p) {
+        int s = aln_->patterns[p].states[taxonIndex];
+        tip8[p] = (s < numStates) ? s : (uint8_t)0xFF;
+    }
+
+    uint8_t* d_tip8 = nullptr;
+    cudaMalloc(&d_tip8, numPatterns * sizeof(uint8_t));
+
+    cudaStream_t stream1;
+    cudaStreamCreate(&stream1);
+
+    cudaMemcpyAsync(
+        d_tip8,
+        tip8.data(),
+        numPatterns * sizeof(uint8_t),
+        cudaMemcpyHostToDevice,
+        stream1
+    );
+
+    int blockSize = 128;  // or 64 / 256 depending on numStates
+
+    launchBuildTipPartials(
+        d_tip8,
+        d_l,
+        numStates,
+        numPatterns,
+        blockSize,
+        stream1
+    );
+
+    cudaFree(d_tip8);
+    d_tip8 = nullptr;
+
+    nvtxRangePop();
 #else
     node->partialLikelihood.resize(numStates, numPatterns);
 
@@ -314,7 +361,14 @@ double LikelihoodCalculator::computeLogLikelihood() {
         uint8_t scale_count[scale_count_size];
 
         traverseAndCompute(tree_->root, scale_count);
-        logL = computeSiteLikelihoodFromRoot(tree_->root->partialLikelihood, scale_count);
+        Matrix &rootL = tree_->root->partialLikelihood;
+
+#ifdef USE_CUBLAS
+        // Ensure rootL is on host
+        rootL.copyDtoHAsync(0);
+#endif
+
+        logL = computeSiteLikelihoodFromRoot(rootL, scale_count);
     }
     return logL;
 }
@@ -431,16 +485,16 @@ double LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL, 
 
     Matrix baseFrequencies = model_->getBaseFrequencies();
 
-#ifdef USE_OPENACC
+#if defined(USE_OPENACC) || defined(USE_CUBLAS)
     //  Precompute frequencies to avoid GPU accessing aln_
     int *freqData = new int[numPatterns];
 
     for (int j = 0; j < numPatterns; ++j) {
         freqData[j] = aln_->patterns[j].frequency;
     }
-
+#ifdef USE_OPENACC
     #pragma acc enter data copyin(freqData[0:numPatterns]) async(2)
-
+#endif
     Matrix siteLikelihoods(1, numPatterns);
     baseFrequencies.multiplyInPlace(rootL, siteLikelihoods);
 #else

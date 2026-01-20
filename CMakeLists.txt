@@ -53,6 +53,8 @@ set(SRC
         model/ModelPOISSON.cpp
         model/ModelPOISSON.h
         tree/Scaling.h
+        helper/TipLikelihoodKernel.cu
+        helper/TipLikelihoodKernel.cuh
 )
 ######################################################
 # setup compilers

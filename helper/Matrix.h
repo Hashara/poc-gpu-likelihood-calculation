@@ -21,6 +21,10 @@ Matrix hadamard(const Matrix& A, const Matrix& B);
 #include <random>
 #include "MatrixOpType.h"
 
+#ifdef USE_CUBLAS
+#include <cuda_runtime.h>
+#endif
+
 class Matrix {
 
 public:
@@ -72,10 +76,27 @@ public:
     void multiplyInPlace(const Matrix& B, Matrix& R) const;
 #endif
 
+#if defined(USE_CUBLAS)
+    void allocDevice();
+    void copyHtoDAsync(cudaStream_t stream);
+    void waitHtoD(cudaStream_t stream) const;
+    double* deviceData() const;
+    void freeDevice();
+    void copyDtoHAsync(cudaStream_t stream);
+    void waitDtoH(cudaStream_t stream) const;
+
+#endif
+
 private:
     size_t m_rows, m_cols;
     double* m_data;
     static MatrixOpType m_opType;
+#if defined(USE_CUBLAS)
+    double* d_data = nullptr; // Device pointer
+    size_t d_elems = 0;      // Number of elements allocated on device
+    cudaEvent_t h2d_event = nullptr; // Event for host-to-device copy
+    cudaEvent_t d2h_event = nullptr; // Event for device-to-host copy
+#endif
 public:
     static void setMOpType(MatrixOpType mOpType);
     // Default to CPU operations

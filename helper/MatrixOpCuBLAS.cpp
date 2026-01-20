@@ -112,68 +112,110 @@ void MatrixOpCuBLAS::compositehadamard(
         const Matrix& C, const Matrix& D,
         Matrix& R, uint8_t* scale_count
 ) {
-    const int K = (int)A.cols();
-    const int P = (int)B.cols();
+    const int P = (int) B.cols();
 
-    R.resize(K, P);
+    R.resize(numStates, P);
 
-    const size_t Asz = (size_t)K * (size_t)K;
-    const size_t Bsz = (size_t)K * (size_t)P;
+    size_t Asz = numStates * numStates;
+    size_t Bsz = numStates * P;
 
     const size_t bytesA = Asz * sizeof(double);
     const size_t bytesB = Bsz * sizeof(double);
-    const size_t bytesR = Bsz * sizeof(double);
 
-    double *d_A = nullptr, *d_B = nullptr, *d_C = nullptr, *d_D = nullptr;
+
+    double *d_B = B.deviceData();   // <<< NO malloc, NO memcpy
+    double *d_D = D.deviceData();   // <<< NO malloc, NO memcpy
+
+    double *d_A = nullptr, *d_C = nullptr;
     double *d_AB = nullptr, *d_CD = nullptr, *d_R = nullptr;
 
-    cudaMalloc(&d_A,  bytesA);
-    cudaMalloc(&d_C,  bytesA);
-    cudaMalloc(&d_B,  bytesB);
-    cudaMalloc(&d_D,  bytesB);
-    cudaMalloc(&d_AB, bytesR);
-    cudaMalloc(&d_CD, bytesR);
-    cudaMalloc(&d_R,  bytesR);
-
+    cudaMalloc(&d_A, bytesA);
+    cudaMalloc(&d_C, bytesA);
     cudaMemcpy(d_A, A.data(), bytesA, cudaMemcpyHostToDevice);
     cudaMemcpy(d_C, C.data(), bytesA, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, B.data(), bytesB, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_D, D.data(), bytesB, cudaMemcpyHostToDevice);
+
+    cudaMalloc(&d_AB, bytesB);
+    cudaMalloc(&d_CD, bytesB);
+    R.allocDevice();                 // allocate device memory for R
+    d_R = R.deviceData();           // device pointer for R
 
     const double alpha = 1.0;
     const double beta0 = 0.0;
 
     // AB = A * B
     auto st1 = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
-                           K, P, K,
+                           numStates, P, numStates,
                            &alpha,
-                           d_A, K,
-                           d_B, K,
+                           d_A, numStates,
+                           d_B, numStates,
                            &beta0,
-                           d_AB, K);
+                           d_AB, numStates);
     if (st1 != CUBLAS_STATUS_SUCCESS) throw std::runtime_error("cublasDgemm(A*B) failed");
 
     // CD = C * D
     auto st2 = cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
-                           K, P, K,
+                           numStates, P, numStates,
                            &alpha,
-                           d_C, K,
-                           d_D, K,
+                           d_C, numStates,
+                           d_D, numStates,
                            &beta0,
-                           d_CD, K);
+                           d_CD, numStates);
     if (st2 != CUBLAS_STATUS_SUCCESS) throw std::runtime_error("cublasDgemm(C*D) failed");
 
     // R = AB ⊙ CD (NO scaling)
     int blockSize = 256;
-    launchHadamard(d_AB, d_CD, d_R, K * P, blockSize);
+    launchHadamard(d_AB, d_CD, d_R, numStates * P, blockSize);
 
-    cudaMemcpy(R.data(), d_R, bytesR, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_A);  cudaFree(d_B);  cudaFree(d_C);  cudaFree(d_D);
-    cudaFree(d_AB); cudaFree(d_CD); cudaFree(d_R);
+    cudaFree(d_A);
+    cudaFree(d_C);
+    cudaFree(d_AB);
+    cudaFree(d_CD);
 
 }
 
 void MatrixOpCuBLAS::multiplyInPlace(const Matrix& A, const Matrix& B, Matrix& R) {
-    R = multiply(A, B);
+    // A = baseFreq, B = root likelihood, R = siteLikelihoods,
+    int M=1, N = A.cols(), P = B.cols();
+    if (N != B.rows()) {
+        throw std::invalid_argument("Matrix dimensions do not match for multiplication.");
+    }
+
+    R.resize(M, P); // R is a column vector of size P
+
+    const double alpha = 1.0;
+    const double beta = 0.0;
+
+    double *d_A, *d_B, *d_R;
+    size_t sizeA = N * sizeof(double);
+    size_t sizeB = N * P * sizeof(double);
+    size_t sizeC = P * sizeof(double);
+
+    cudaMalloc(&d_A, sizeA);
+
+    d_B = B.deviceData();   // <<< NO malloc, NO memcpy
+    R.allocDevice();                 // allocate device memory for R
+    d_R = R.deviceData();           // device pointer for R
+
+    cudaMemcpy(d_A, A.data(), sizeA, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B.data(), sizeB, cudaMemcpyHostToDevice);
+
+
+    // Column-major GEMM: C(MxP) = A(MxN) * B(NxP)
+    cublasDgemm(handle,
+                CUBLAS_OP_N, CUBLAS_OP_N,
+            /* m */ M,
+            /* n */ P,
+            /* k */ N,
+                &alpha,
+            /* A */ d_A, /* lda */ M,
+            /* B */ d_B, /* ldb */ N,
+                &beta,
+            /* C */ d_R, /* ldc */ M);
+
+    cudaMemcpy(R.data(), d_R, sizeC, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_R);
+
 }
