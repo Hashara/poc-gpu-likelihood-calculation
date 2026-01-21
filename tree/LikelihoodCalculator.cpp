@@ -363,11 +363,6 @@ double LikelihoodCalculator::computeLogLikelihood() {
         traverseAndCompute(tree_->root, scale_count);
         Matrix &rootL = tree_->root->partialLikelihood;
 
-#ifdef USE_CUBLAS
-        // Ensure rootL is on host
-        rootL.copyDtoHAsync(0);
-#endif
-
         logL = computeSiteLikelihoodFromRoot(rootL, scale_count);
     }
     return logL;

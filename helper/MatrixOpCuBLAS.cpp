@@ -197,8 +197,6 @@ void MatrixOpCuBLAS::multiplyInPlace(const Matrix& A, const Matrix& B, Matrix& R
     d_R = R.deviceData();           // device pointer for R
 
     cudaMemcpy(d_A, A.data(), sizeA, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, B.data(), sizeB, cudaMemcpyHostToDevice);
-
 
     // Column-major GEMM: C(MxP) = A(MxN) * B(NxP)
     cublasDgemm(handle,
