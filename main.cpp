@@ -10,6 +10,7 @@
 #include "helper/logger/Logger.h"
 
 #include "Params.h"
+#include "helper/MatrixOp.h"
 
 //#define VERBOSE
 
@@ -76,6 +77,8 @@ int main(int argc, char *argv[]) {
         logInfo("Tree loaded successfully.");
         elapsed = end - start;
         logInfo("Time taken to read tree: " + std::to_string(elapsed.count()) + " seconds");
+
+        MatrixOp::setNumStates(params.numStates);
 
 #ifndef USE_EIGEN
         MatrixOpType opType;
