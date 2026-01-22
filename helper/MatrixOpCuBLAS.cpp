@@ -122,7 +122,6 @@ void MatrixOpCuBLAS::compositehadamard(
     const size_t bytesA = Asz * sizeof(double);
     const size_t bytesB = Bsz * sizeof(double);
 
-
     double *d_B = B.deviceData();   // <<< NO malloc, NO memcpy
     double *d_D = D.deviceData();   // <<< NO malloc, NO memcpy
 
@@ -187,8 +186,6 @@ void MatrixOpCuBLAS::multiplyInPlace(const Matrix& A, const Matrix& B, Matrix& R
 
     double *d_A, *d_B, *d_R;
     size_t sizeA = N * sizeof(double);
-    size_t sizeB = N * P * sizeof(double);
-    size_t sizeC = P * sizeof(double);
 
     cudaMalloc(&d_A, sizeA);
 
@@ -210,7 +207,7 @@ void MatrixOpCuBLAS::multiplyInPlace(const Matrix& A, const Matrix& B, Matrix& R
                 &beta,
             /* C */ d_R, /* ldc */ M);
 
-    cudaMemcpy(R.data(), d_R, sizeC, cudaMemcpyDeviceToHost);
+    R.copyDtoHAsync(0); // copy R back to host
 
     cudaFree(d_A);
     cudaFree(d_B);
