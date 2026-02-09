@@ -32,6 +32,10 @@ private:
   // Streams for async execution
   cudaStream_t stream1 = nullptr;
   cudaStream_t stream2 = nullptr;
+
+public:
+  // Expose stream for reuse by LikelihoodCalculator
+  cudaStream_t getStream() const { return stream1; }
 };
 
 #endif // POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPCUBLAS_H

@@ -10,6 +10,7 @@
 #include <vector>
 #endif
 #ifdef USE_CUBLAS
+#include "../helper/MatrixOpDispatcher.h"
 #include "../helper/TipLikelihoodKernel.cuh"
 #endif
 
@@ -100,25 +101,31 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     tip8[p] = (s < numStates) ? s : (uint8_t)0xFF;
   }
 
-  uint8_t *d_tip8 = nullptr;
-  cudaMalloc(&d_tip8, numPatterns * sizeof(uint8_t));
+  // OPTIMIZATION: Use cached tip8 buffer to avoid repeated cudaMalloc/cudaFree
+  static uint8_t *d_tip8 = nullptr;
+  static size_t d_tip8_size = 0;
+  if (!d_tip8 || d_tip8_size < (size_t)numPatterns) {
+    if (d_tip8)
+      cudaFree(d_tip8);
+    cudaMalloc(&d_tip8, numPatterns * sizeof(uint8_t));
+    d_tip8_size = numPatterns;
+  }
 
-  cudaStream_t stream1;
-  cudaStreamCreate(&stream1);
+  // OPTIMIZATION: Reuse stream from MatrixOpCuBLAS singleton instead of
+  // creating per node
+  cudaStream_t stream = getCuBLASStream();
 
   cudaMemcpyAsync(d_tip8, tip8.data(), numPatterns * sizeof(uint8_t),
-                  cudaMemcpyHostToDevice, stream1);
+                  cudaMemcpyHostToDevice, stream);
 
-  int blockSize = 128; // or 64 / 256 depending on numStates
+  int blockSize = 256; // OPTIMIZATION: Match kernel thread count
 
   launchBuildTipPartials(d_tip8, d_l, numStates, numPatterns, blockSize,
-                         stream1);
+                         stream);
 
-  // Synchronize and clean up resources to prevent leaks
-  cudaStreamSynchronize(stream1);
-  cudaFree(d_tip8);
-  d_tip8 = nullptr;
-  cudaStreamDestroy(stream1); // Fix: Stream was leaked before
+  // OPTIMIZATION: Don't synchronize here! Let operations queue asynchronously.
+  // The tip likelihood will be synchronized when needed by compositehadamard
+  // through the Matrix::waitHtoD mechanism or stream ordering.
 
   nvtxRangePop();
 #else
@@ -521,7 +528,17 @@ LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
 #pragma acc exit data delete (sl[0 : numPatterns],                             \
                               freqData[0 : numPatterns])async
 
+#elif defined(USE_CUBLAS)
+  // CUBLAS: Apply scale_count correction just like OpenACC
+  for (int j = 0; j < numPatterns; ++j) {
+    double siteLikelihood = siteLikelihoods(0, j);
+    logL += freqData[j] *
+            (std::log(siteLikelihood) + scale_count[j] * LOG_SCALING_THRESHOLD);
+  }
+  delete[] freqData;
+
 #else
+  // CPU fallback (no scaling)
   for (int j = 0; j < numPatterns; ++j) {
     double siteLikelihood =
         siteLikelihoods(0, j); // Assuming siteLikelihoods is a 1-row matrix

@@ -26,6 +26,11 @@ __global__ void composite_hadamard_fused_kernel(
     int sites_per_block // Number of sites processed per block
 );
 
+__global__ void
+scaling_kernel(double *__restrict__ r,            // KxP, site-major columns
+               uint8_t *__restrict__ scale_count, // Per-site scale counter
+               int K, int P, double scaling_threshold, int scaling_exp);
+
 void launchHadamard(const double *A, const double *B, double *C, int size,
                     int blockSize);
 void launchCompositeHadamard(const double *d_AB, const double *d_CD,
@@ -34,6 +39,7 @@ void launchCompositeHadamard(const double *d_AB, const double *d_CD,
                              int scaling_exp);
 void launchCompositeHadamardFused(const double *d_A, const double *d_B,
                                   const double *d_C, const double *d_D,
-                                  double *d_R, int K, int P,
-                                  cudaStream_t stream);
+                                  double *d_R, uint8_t *d_scale_count, int K,
+                                  int P, double scaling_threshold,
+                                  int scaling_exp, cudaStream_t stream);
 #endif // POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXKERNELS_CUH

@@ -3,6 +3,7 @@
 //
 
 #include "MatrixOpCuBLAS.h"
+#include "../tree/Scaling.h"
 #include "MatrixKernels.cuh"
 #include <cuda_runtime.h>
 #include <stdexcept>
@@ -123,50 +124,58 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
 
   R.resize(numStates, P);
 
-  size_t Asz = numStates * numStates;
-  const size_t bytesA = Asz * sizeof(double);
-
+  // All matrices are now pre-uploaded to GPU:
+  // - A, C: uploaded by Model::buildTransitionMatrix()
+  // - B, D: uploaded by buildTipLikelihood() or previous compositehadamard()
+  double *d_A = A.deviceData(); // Pre-uploaded by buildTransitionMatrix
   double *d_B = B.deviceData(); // Pre-uploaded by buildTipLikelihood
+  double *d_C = C.deviceData(); // Pre-uploaded by buildTransitionMatrix
   double *d_D = D.deviceData(); // Pre-uploaded by buildTipLikelihood
 
-  // Allocate device memory for transition matrices (allocated once, reused)
-  static double *d_A_static = nullptr;
-  static double *d_C_static = nullptr;
-  static size_t alloc_size = 0;
-
-  if (!d_A_static || alloc_size < Asz) {
-    if (d_A_static)
-      cudaFree(d_A_static);
-    if (d_C_static)
-      cudaFree(d_C_static);
-    cudaMalloc(&d_A_static, bytesA);
-    cudaMalloc(&d_C_static, bytesA);
-    alloc_size = Asz;
-  }
-
-  // Async copy transition matrices on stream1 - kernel will wait for these
-  // due to stream ordering (all operations on same stream execute in order)
-  cudaMemcpyAsync(d_A_static, A.data(), bytesA, cudaMemcpyHostToDevice,
-                  stream1);
-  cudaMemcpyAsync(d_C_static, C.data(), bytesA, cudaMemcpyHostToDevice,
-                  stream1);
+  // Wait for transition matrices to finish uploading (they use stream 0)
+  A.waitHtoD(stream1);
+  C.waitHtoD(stream1);
 
   R.allocDevice();
   double *d_R = R.deviceData();
 
-  // FUSED KERNEL on stream1 - automatically waits for above copies to complete
-  // No explicit synchronization needed due to stream ordering!
-  launchCompositeHadamardFused(d_A_static, // Transition matrix P1
-                               d_B,        // Left child partial likelihood
-                               d_C_static, // Transition matrix P2
-                               d_D,        // Right child partial likelihood
-                               d_R,        // Output: result
-                               numStates,  // K = number of states
-                               P,          // P = number of sites/patterns
-                               stream1     // CUDA stream
+  // ===== scale_count handling =====
+  // scale_count accumulates across ALL internal node computations.
+  // Pattern: H->D copy (with accumulated counts), kernel increments, D->H copy
+  static uint8_t *d_scale_count = nullptr;
+  static size_t d_scale_count_size = 0;
+
+  if (!d_scale_count || d_scale_count_size < (size_t)P) {
+    if (d_scale_count)
+      cudaFree(d_scale_count);
+    cudaMalloc(&d_scale_count, P * sizeof(uint8_t));
+    d_scale_count_size = P;
+  }
+
+  // Copy scale_count from host to GPU (preserves accumulated counts)
+  cudaMemcpyAsync(d_scale_count, scale_count, P * sizeof(uint8_t),
+                  cudaMemcpyHostToDevice, stream1);
+
+  // FUSED KERNEL + SCALING KERNEL - matches OpenACC two-loop pattern!
+  launchCompositeHadamardFused(d_A,           // Transition matrix P1
+                               d_B,           // Left child partial likelihood
+                               d_C,           // Transition matrix P2
+                               d_D,           // Right child partial likelihood
+                               d_R,           // Output: result
+                               d_scale_count, // Scale count per site
+                               numStates,     // K = number of states
+                               P,             // P = number of sites/patterns
+                               SCALING_THRESHOLD,     // Threshold for scaling
+                               SCALING_THRESHOLD_EXP, // Exponent for scalbn
+                               stream1                // CUDA stream
   );
 
-  // Static buffers are reused, not freed
+  // Copy scale_count back to host (with new increments from this call)
+  cudaMemcpyAsync(scale_count, d_scale_count, P * sizeof(uint8_t),
+                  cudaMemcpyDeviceToHost, stream1);
+
+  // Sync to ensure scale_count is available on host
+  cudaStreamSynchronize(stream1);
 }
 
 void MatrixOpCuBLAS::multiplyInPlace(const Matrix &A, const Matrix &B,
