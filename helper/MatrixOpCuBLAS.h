@@ -21,6 +21,21 @@ public:
 #endif // USE_CUBLAS
 private:
     cublasHandle_t handle;
+
+    // Cached buffers for compositehadamard (avoid repeated malloc/free)
+    double* d_A_cache = nullptr;   // numStates x numStates transition matrix
+    double* d_C_cache = nullptr;   // numStates x numStates transition matrix
+    double* d_AB_cache = nullptr;  // numStates x P intermediate result
+    double* d_CD_cache = nullptr;  // numStates x P intermediate result
+    size_t cache_elems_A = 0;      // Current allocation size for A/C
+    size_t cache_elems_B = 0;      // Current allocation size for AB/CD (max P seen)
+
+    // Streams for parallel GEMM execution
+    cudaStream_t stream1 = nullptr;
+    cudaStream_t stream2 = nullptr;
+
+    // Helper to ensure buffer is large enough
+    void ensureBuffer(double*& buf, size_t& current_elems, size_t needed_elems);
 };
 
 
