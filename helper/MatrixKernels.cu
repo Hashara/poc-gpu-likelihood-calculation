@@ -66,20 +66,19 @@ hadamard_scale_kernel(const double *__restrict__ ab, // size: numStates * P
  * - Multiple sites processed per block for better occupancy
  * - Coalesced memory access patterns
  *
- * NOTE: Scaling is done separately via launchScalingKernel() to match OpenACC
- * pattern and avoid race conditions.
+ * NOTE: Scaling is done separately via launchScalingKernel()
  *
  * For DNA (K=4): 32 sites per block with 128 threads
  * For Protein (K=20): 6 sites per block with 120 threads
  */
 __global__ void composite_hadamard_fused_kernel(
     const double *__restrict__ a, // KxK, column-major: a[k*K + i] = A(i,k)
-    const double
-        *__restrict__ b, // KxP, site-major columns: b[j*K + k] = B(k,j)
+    const double *__restrict__ b, // KxP, site-major columns: b[j*K + k] = B(k,j)
     const double *__restrict__ c, // KxK, column-major
     const double *__restrict__ d, // KxP, site-major columns
     double *__restrict__ r,       // KxP, site-major columns: r[j*K + i]
     int K, int P, int sites_per_block) {
+
   // Shared memory layout: [A matrix][C matrix]
   extern __shared__ double smem[];
   double *s_a = smem;         // K*K elements for transition matrix A
@@ -113,13 +112,12 @@ __global__ void composite_hadamard_fused_kernel(
   double s1 = 0.0;
   double s2 = 0.0;
 
-#pragma unroll 4
   for (int k = 0; k < K; ++k) {
     s1 += s_a[k * K + state_i] * bj[k]; // (A*B)[i,j]
     s2 += s_c[k * K + state_i] * dj[k]; // (C*D)[i,j]
   }
 
-  // Write result: Hadamard product (NO scaling here - done separately)
+  //Hadamard product
   r[global_site_j * K + state_i] = s1 * s2;
 }
 
@@ -135,7 +133,7 @@ scaling_kernel(double *__restrict__ r,            // KxP, site-major columns
   if (j >= P)
     return;
 
-  // 1) Find max absolute value in this column
+  //  Find max absolute value in this column
   double max_abs = 0.0;
   for (int i = threadIdx.x; i < K; i += blockDim.x) {
     double v = fabs(r[j * K + i]);
@@ -143,7 +141,7 @@ scaling_kernel(double *__restrict__ r,            // KxP, site-major columns
       max_abs = v;
   }
 
-  // 2) Reduce max within block
+  //  Reduce max within block
   extern __shared__ double sdata[];
   int tid = threadIdx.x;
   sdata[tid] = max_abs;
@@ -157,7 +155,7 @@ scaling_kernel(double *__restrict__ r,            // KxP, site-major columns
 
   max_abs = sdata[0];
 
-  // 3) Rescale if below threshold
+  // scale if below threshold
   if (max_abs < scaling_threshold && max_abs > 0.0) {
     for (int i = threadIdx.x; i < K; i += blockDim.x) {
       r[j * K + i] = scalbn(r[j * K + i], scaling_exp);
@@ -190,8 +188,8 @@ void launchCompositeHadamardFused(const double *d_A, const double *d_B,
                                   double *d_R, uint8_t *d_scale_count, int K,
                                   int P, double scaling_threshold,
                                   int scaling_exp, cudaStream_t stream) {
-  // ===== STEP 1: Fused Hadamard kernel (NO scaling) =====
-  // 128 threads per block for good occupancy
+  //  Fused Hadamard kernel (NO scaling)\
+  // 128 threads per block
   // DNA (K=4):    128 threads → 32 sites per block
   // Protein (K=20): ~6 sites per block
   int target_threads = 128;
@@ -209,8 +207,7 @@ void launchCompositeHadamardFused(const double *d_A, const double *d_B,
                                     stream>>>(d_A, d_B, d_C, d_D, d_R, K, P,
                                               sites_per_block);
 
-  // ===== STEP 2: Scaling kernel (matches OpenACC pattern) =====
-  // One block per site, use 32 threads (enough for K <= 32)
+  // scaling
   int scaling_threads = 32;
   size_t scaling_smem = scaling_threads * sizeof(double);
 

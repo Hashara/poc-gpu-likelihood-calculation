@@ -200,6 +200,21 @@ if (USE_CUBLAS)
 
             find_package(CUDAToolkit REQUIRED)
 
+            # GPU architecture targeting (
+            if (TARGET_A100)
+                set(CMAKE_CUDA_ARCHITECTURES 80)
+                message("CUBLAS Target: A100 GPU (sm_80)")
+            elseif (TARGET_H200)
+                set(CMAKE_CUDA_ARCHITECTURES 90)
+                message("CUBLAS Target: H200 GPU (sm_90)")
+            else()
+                set(CMAKE_CUDA_ARCHITECTURES 70)
+                message("CUBLAS Target: V100 GPU (sm_70, default)")
+            endif()
+
+            # Max register count per thread (equivalent to -gpu=maxregcount:61)
+            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --maxrregcount=61")
+
             list(APPEND SRC
                     helper/MatrixOpCuBLAS.cpp
                     helper/MatrixOpCuBLAS.h
