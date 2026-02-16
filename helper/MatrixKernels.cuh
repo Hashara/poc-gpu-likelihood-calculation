@@ -40,4 +40,11 @@ void launchCompositeHadamardFused(const double *d_A, const double *d_B,
                                   double *d_R, uint8_t *d_scale_count, int K,
                                   int P, double scaling_threshold,
                                   int scaling_exp, cudaStream_t stream);
+
+void launchFusedLogLikelihood(const double *d_baseFreq, const double *d_rootL,
+                              const uint8_t *d_scale_count, const int *d_freq,
+                              double *d_result, int K, int P,
+                              double log_scaling_threshold,
+                              cudaStream_t stream);
+
 #endif // POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXKERNELS_CUH

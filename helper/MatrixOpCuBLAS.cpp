@@ -22,6 +22,11 @@ MatrixOpCuBLAS::~MatrixOpCuBLAS() {
   // Free GPU-resident scale_count
   if (d_scale_count)
     cudaFree(d_scale_count);
+  // Free cached freq + result buffers
+  if (d_freq_cache)
+    cudaFree(d_freq_cache);
+  if (d_logL_result)
+    cudaFree(d_logL_result);
   // Destroy streams
   if (stream1)
     cudaStreamDestroy(stream1);
@@ -151,7 +156,7 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
 
   // ===== scale_count: GPU-resident, no per-call copies =====
   // d_scale_count is zeroed once per traversal by resetScaleCount()
-  // and copied D→H once by syncScaleCount() after the traversal.
+  // and copied D->H once by syncScaleCount() after the traversal.
   if (!d_scale_count || d_scale_count_size < (size_t)P) {
     if (d_scale_count)
       cudaFree(d_scale_count);
@@ -173,7 +178,8 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
       SCALING_THRESHOLD_EXP, // Exponent for scalbn
       stream1                // CUDA stream
   );
-  // No D→H copy or sync here — scale_count stays on GPU until syncScaleCount()
+  // No D->H copy or sync here -- scale_count stays on GPU until
+  // syncScaleCount()
 }
 
 void MatrixOpCuBLAS::resetScaleCount(int P) {
@@ -234,4 +240,55 @@ void MatrixOpCuBLAS::multiplyInPlace(const Matrix &A, const Matrix &B,
   R.copyDtoHAsync(0); // copy R back to host
 
   // No cudaFree - base frequency is cached for reuse!
+}
+
+double MatrixOpCuBLAS::computeLogLikelihood(const Matrix &baseFreq,
+                                            const Matrix &rootL,
+                                            const int *freq, int numPatterns,
+                                            double log_scaling_threshold) {
+  int K = (int)baseFreq.cols(); // number of states
+  int P = numPatterns;
+
+  // --- 1. Cache base frequency on GPU (constant, uploaded once) ---
+  size_t needed_elems = (size_t)K;
+  if (!d_baseFreq_cache || baseFreq_elems < needed_elems) {
+    if (d_baseFreq_cache)
+      cudaFree(d_baseFreq_cache);
+    cudaMalloc(&d_baseFreq_cache, needed_elems * sizeof(double));
+    cudaMemcpy(d_baseFreq_cache, baseFreq.data(), needed_elems * sizeof(double),
+               cudaMemcpyHostToDevice);
+    baseFreq_elems = needed_elems;
+  }
+
+  // --- 2. Cache freq data on GPU (constant, uploaded once) ---
+  if (!d_freq_cache || d_freq_elems < (size_t)P) {
+    if (d_freq_cache)
+      cudaFree(d_freq_cache);
+    cudaMalloc(&d_freq_cache, P * sizeof(int));
+    cudaMemcpyAsync(d_freq_cache, freq, P * sizeof(int), cudaMemcpyHostToDevice,
+                    stream1);
+    d_freq_elems = P;
+  }
+
+  // --- 3. Allocate result scalar on GPU (reused) ---
+  if (!d_logL_result) {
+    cudaMalloc(&d_logL_result, sizeof(double));
+  }
+
+  // --- 4. Single fused kernel: dot product + log + scale + reduction ---
+  // Replaces cuBLAS DGEMM + separate reduction kernel.
+  // For DNA (K=4), each thread does 4 MADs instead of launching cuBLAS
+  // which has ~15-25us overhead for an M=1 DGEMM.
+  double *d_rootL = rootL.deviceData(); // already on GPU from compositehadamard
+  launchFusedLogLikelihood(d_baseFreq_cache, d_rootL, d_scale_count,
+                           d_freq_cache, d_logL_result, K, P,
+                           log_scaling_threshold, stream1);
+
+  // --- 5. Copy single scalar back to host ---
+  double logL = 0.0;
+  cudaMemcpyAsync(&logL, d_logL_result, sizeof(double), cudaMemcpyDeviceToHost,
+                  stream1);
+  cudaStreamSynchronize(stream1);
+
+  return logL;
 }

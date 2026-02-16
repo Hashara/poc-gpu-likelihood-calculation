@@ -24,7 +24,12 @@ public:
   // GPU-resident scale_count lifecycle management
   void resetScaleCount(int P); // Zero on GPU at start of traversal
   void syncScaleCount(uint8_t *host_ptr, int P); // Copy D→H at end of traversal
-#endif                                           // USE_CUBLAS
+
+  // GPU reduction: DGEMM + log-likelihood sum, returns scalar logL
+  double computeLogLikelihood(const Matrix &baseFreq, const Matrix &rootL,
+                              const int *freq, int numPatterns,
+                              double log_scaling_threshold);
+#endif // USE_CUBLAS
 private:
   cublasHandle_t handle;
 
@@ -36,6 +41,11 @@ private:
   // GPU-resident scale_count (persists across compositehadamard calls)
   uint8_t *d_scale_count = nullptr;
   size_t d_scale_count_size = 0;
+
+  // Cached freq + result buffers for GPU log-likelihood reduction
+  int *d_freq_cache = nullptr;
+  size_t d_freq_elems = 0;
+  double *d_logL_result = nullptr; // single scalar on GPU
 
   // Streams for async execution
   cudaStream_t stream1 = nullptr;

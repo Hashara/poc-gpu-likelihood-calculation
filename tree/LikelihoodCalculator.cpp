@@ -301,10 +301,7 @@ void LikelihoodCalculator::traverseAndCompute(Node *root,
     }
   }
 
-#ifdef USE_CUBLAS
-  // Copy GPU-resident scale_count back to host (single D→H + sync)
-  syncCuBLASScaleCount(scale_count, (int)scale_count_size);
-#endif
+  // scale_count remains GPU-resident — computeLogLikelihood reads it directly
 }
 
 void LikelihoodCalculator::buildPostorder(Node *n, std::vector<Node *> &out) {
@@ -505,18 +502,24 @@ LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
 
   Matrix baseFrequencies = model_->getBaseFrequencies();
 
-#if defined(USE_OPENACC) || defined(USE_CUBLAS)
+#if defined(USE_OPENACC)
   //  Precompute frequencies to avoid GPU accessing aln_
   int *freqData = new int[numPatterns];
 
   for (int j = 0; j < numPatterns; ++j) {
     freqData[j] = aln_->patterns[j].frequency;
   }
-#ifdef USE_OPENACC
 #pragma acc enter data copyin(freqData[0 : numPatterns]) async(2)
-#endif
   Matrix siteLikelihoods(1, numPatterns);
   baseFrequencies.multiplyInPlace(rootL, siteLikelihoods);
+
+#elif defined(USE_CUBLAS)
+  //  Precompute frequencies for GPU reduction kernel
+  int *freqData = new int[numPatterns];
+  for (int j = 0; j < numPatterns; ++j) {
+    freqData[j] = aln_->patterns[j].frequency;
+  }
+
 #else
   Matrix siteLikelihoods = baseFrequencies * rootL;
 #endif
@@ -539,12 +542,9 @@ LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
                               freqData[0 : numPatterns])async
 
 #elif defined(USE_CUBLAS)
-  // CUBLAS: Apply scale_count correction just like OpenACC
-  for (int j = 0; j < numPatterns; ++j) {
-    double siteLikelihood = siteLikelihoods(0, j);
-    logL += freqData[j] *
-            (std::log(siteLikelihood) + scale_count[j] * LOG_SCALING_THRESHOLD);
-  }
+  // GPU reduction: DGEMM + log-likelihood sum entirely on device
+  logL = computeCuBLASLogLikelihood(baseFrequencies, rootL, freqData,
+                                    numPatterns, LOG_SCALING_THRESHOLD);
   delete[] freqData;
 
 #else

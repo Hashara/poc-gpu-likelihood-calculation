@@ -77,6 +77,19 @@ inline void syncCuBLASScaleCount(uint8_t *host_ptr, int P) {
   if (op)
     op->syncScaleCount(host_ptr, P);
 }
+
+// Helper to compute log-likelihood entirely on GPU (DGEMM + reduction)
+inline double computeCuBLASLogLikelihood(const Matrix &baseFreq,
+                                         const Matrix &rootL, const int *freq,
+                                         int numPatterns,
+                                         double log_scaling_threshold) {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  if (op)
+    return op->computeLogLikelihood(baseFreq, rootL, freq, numPatterns,
+                                    log_scaling_threshold);
+  return 0.0;
+}
 #endif
 
 #endif // USE_EIGEN

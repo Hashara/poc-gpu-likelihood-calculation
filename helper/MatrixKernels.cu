@@ -246,3 +246,67 @@ void launchCompositeHadamardFused(const double *d_A, const double *d_B,
                                               d_scale_count, sites_per_block,
                                               scaling_threshold, scaling_exp);
 }
+
+// ========= Fused Log-Likelihood Kernel =========
+// Replaces cuBLAS DGEMM + separate reduction with a single kernel.
+// Each thread handles one site j:
+//   1. Dot product: siteL = sum_k baseFreq[k] * rootL[k + j*K]  (replaces
+//   DGEMM)
+//   2. val = freq[j] * (log(siteL) + scale_count[j] * log_scaling_threshold)
+//   3. Block-level reduction -> atomicAdd to global result
+__global__ void fused_log_likelihood_kernel(
+    const double *__restrict__ baseFreq, // K values (cached on GPU)
+    const double *__restrict__ rootL,    // K*P column-major (already on GPU)
+    const uint8_t *__restrict__ scale_count, // P-length (GPU-resident)
+    const int *__restrict__ freq,            // P-length pattern frequencies
+    double *__restrict__ d_result,           // single output scalar
+    int K, int P, double log_scaling_threshold) {
+
+  extern __shared__ double sdata[];
+
+  int tid = threadIdx.x;
+  int gid = blockIdx.x * blockDim.x + tid;
+
+  double val = 0.0;
+  if (gid < P) {
+    // Dot product replaces cuBLAS DGEMM for M=1
+    // For DNA (K=4): just 4 MADs, compiler unrolls this
+    double siteL = 0.0;
+    const double *col = rootL + gid * K; // column-major: column j starts at j*K
+    for (int k = 0; k < K; ++k) {
+      siteL += baseFreq[k] * col[k];
+    }
+    val = freq[gid] * (log(siteL) + scale_count[gid] * log_scaling_threshold);
+  }
+
+  sdata[tid] = val;
+  __syncthreads();
+
+  // Block-level tree reduction
+  for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+    if (tid < s) {
+      sdata[tid] += sdata[tid + s];
+    }
+    __syncthreads();
+  }
+
+  if (tid == 0) {
+    atomicAdd(d_result, sdata[0]);
+  }
+}
+
+void launchFusedLogLikelihood(const double *d_baseFreq, const double *d_rootL,
+                              const uint8_t *d_scale_count, const int *d_freq,
+                              double *d_result, int K, int P,
+                              double log_scaling_threshold,
+                              cudaStream_t stream) {
+  cudaMemsetAsync(d_result, 0, sizeof(double), stream);
+
+  int threads = 256;
+  int blocks = (P + threads - 1) / threads;
+  size_t smem = threads * sizeof(double);
+
+  fused_log_likelihood_kernel<<<blocks, threads, smem, stream>>>(
+      d_baseFreq, d_rootL, d_scale_count, d_freq, d_result, K, P,
+      log_scaling_threshold);
+}
