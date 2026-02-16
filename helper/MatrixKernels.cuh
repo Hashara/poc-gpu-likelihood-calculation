@@ -7,30 +7,27 @@
 #include <cstdint> // for uint8_t
 
 #pragma once
+
+// Set constant memory values for K (numStates) and P (num sites)
+// Must be called once before any kernel launch
+void setKernelConstants(int K, int P);
 __global__ void hadamardKernel(const double *A, const double *B, double *C,
                                int size);
-__global__ void
-hadamard_scale_kernel(const double *__restrict__ ab, // size: numStates * P
-                      const double *__restrict__ cd, // size: numStates * P
-                      double *__restrict__ r,        // size: numStates * P
-                      uint8_t *__restrict__ scale_count, int numStates, int P,
-                      double scaling_threshold, int scaling_exp);
+__global__ void hadamard_scale_kernel(const double *__restrict__ ab,
+                                      const double *__restrict__ cd,
+                                      double *__restrict__ r,
+                                      uint8_t *__restrict__ scale_count,
+                                      double scaling_threshold,
+                                      int scaling_exp);
 __global__ void composite_hadamard_fused_kernel(
-    const double *__restrict__ a, // KxK, column-major: a[k*K + i] = A(i,k)
-    const double
-        *__restrict__ b, // KxP, site-major columns: b[j*K + k] = B(k,j)
-    const double *__restrict__ c,      // KxK, column-major
-    const double *__restrict__ d,      // KxP, site-major columns
-    double *__restrict__ r,            // KxP, site-major columns: r[j*K + i]
-    uint8_t *__restrict__ scale_count, // Per-site scale counter
-    int K, int P,
-    int sites_per_block, // Number of sites processed per block
-    double scaling_threshold, int scaling_exp);
+    const double *__restrict__ a, const double *__restrict__ b,
+    const double *__restrict__ c, const double *__restrict__ d,
+    double *__restrict__ r, uint8_t *__restrict__ scale_count,
+    int sites_per_block, double scaling_threshold, int scaling_exp);
 
-__global__ void
-scaling_kernel(double *__restrict__ r,            // KxP, site-major columns
-               uint8_t *__restrict__ scale_count, // Per-site scale counter
-               int K, int P, double scaling_threshold, int scaling_exp);
+__global__ void scaling_kernel(double *__restrict__ r,
+                               uint8_t *__restrict__ scale_count,
+                               double scaling_threshold, int scaling_exp);
 
 void launchHadamard(const double *A, const double *B, double *C, int size,
                     int blockSize);

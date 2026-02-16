@@ -122,6 +122,13 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
                                        Matrix &R, uint8_t *scale_count) {
   const int P = (int)B.cols();
 
+  // Set constant memory once (K and P are fixed for the entire execution)
+  static bool constants_set = false;
+  if (!constants_set) {
+    setKernelConstants(numStates, P);
+    constants_set = true;
+  }
+
   R.resize(numStates, P);
 
   // All matrices are now pre-uploaded to GPU:
