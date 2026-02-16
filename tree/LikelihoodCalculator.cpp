@@ -179,10 +179,12 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node,
 
   //    Matrix P1 = model_->getTransitionMatrix(left->branchLength);
   //    Matrix P2 = model_->getTransitionMatrix(right->branchLength);
-  Matrix P1(numStates, numStates);
+  static Matrix P1(numStates, numStates);
+  P1.resize(numStates, numStates); // no-op after first call
   model_->buildTransitionMatrix(left->branchLength, P1);
 
-  Matrix P2(numStates, numStates);
+  static Matrix P2(numStates, numStates);
+  P2.resize(numStates, numStates); // no-op after first call
   model_->buildTransitionMatrix(right->branchLength, P2);
 
 #if !(defined(USE_OPENACC) || defined(USE_CUBLAS))

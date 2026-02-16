@@ -5,6 +5,9 @@
 #include "ModelJC.h"
 #include <cmath>
 #include <iostream>
+#if defined(USE_CUBLAS) && defined(USE_CUDA)
+#include "../helper/MatrixOpDispatcher.h"
+#endif
 
 std::string ModelJC::getName() const { return "JC69"; }
 
@@ -161,7 +164,8 @@ void ModelJC::buildTransitionMatrix(double t, Matrix &P) const {
   // Match OpenACC pattern: upload transition matrix to GPU here
   // so compositehadamard can use it directly without host-to-device copy
   P.allocDevice();
-  P.copyHtoDAsync(0); // Use default stream, will be synced before use
+  P.copyHtoDAsync(getCuBLASStream()); // Upload on compute stream — no
+                                      // cross-stream sync needed
 #endif
 }
 
