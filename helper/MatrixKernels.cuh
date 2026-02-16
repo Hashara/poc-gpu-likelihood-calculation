@@ -19,12 +19,13 @@ __global__ void composite_hadamard_fused_kernel(
     const double *__restrict__ a, // KxK, column-major: a[k*K + i] = A(i,k)
     const double
         *__restrict__ b, // KxP, site-major columns: b[j*K + k] = B(k,j)
-    const double *__restrict__ c, // KxK, column-major
-    const double *__restrict__ d, // KxP, site-major columns
-    double *__restrict__ r,       // KxP, site-major columns: r[j*K + i]
+    const double *__restrict__ c,      // KxK, column-major
+    const double *__restrict__ d,      // KxP, site-major columns
+    double *__restrict__ r,            // KxP, site-major columns: r[j*K + i]
+    uint8_t *__restrict__ scale_count, // Per-site scale counter
     int K, int P,
-    int sites_per_block // Number of sites processed per block
-);
+    int sites_per_block, // Number of sites processed per block
+    double scaling_threshold, int scaling_exp);
 
 __global__ void
 scaling_kernel(double *__restrict__ r,            // KxP, site-major columns
