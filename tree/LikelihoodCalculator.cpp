@@ -273,6 +273,9 @@ void LikelihoodCalculator::traverseAndCompute(Node *root,
 #pragma acc parallel loop present(scale_count[0 : scale_count_size]) async(1)
   for (size_t i = 0; i < scale_count_size; ++i)
     scale_count[i] = 0;
+#elif defined(USE_CUBLAS)
+  // scale_count stays GPU-resident for entire traversal — zero it on device
+  resetCuBLASScaleCount((int)scale_count_size);
 #else
   std::fill(scale_count, scale_count + scale_count_size, 0);
 #endif
@@ -297,6 +300,11 @@ void LikelihoodCalculator::traverseAndCompute(Node *root,
       n->isPartialLikelihoodCalculated = true;
     }
   }
+
+#ifdef USE_CUBLAS
+  // Copy GPU-resident scale_count back to host (single D→H + sync)
+  syncCuBLASScaleCount(scale_count, (int)scale_count_size);
+#endif
 }
 
 void LikelihoodCalculator::buildPostorder(Node *n, std::vector<Node *> &out) {

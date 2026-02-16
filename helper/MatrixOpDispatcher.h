@@ -61,6 +61,22 @@ inline cudaStream_t getCuBLASStream() {
       dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
   return op ? op->getStream() : nullptr;
 }
+
+// Helper to zero GPU-resident scale_count at start of traversal
+inline void resetCuBLASScaleCount(int P) {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  if (op)
+    op->resetScaleCount(P);
+}
+
+// Helper to copy GPU-resident scale_count back to host after traversal
+inline void syncCuBLASScaleCount(uint8_t *host_ptr, int P) {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  if (op)
+    op->syncScaleCount(host_ptr, P);
+}
 #endif
 
 #endif // USE_EIGEN

@@ -20,7 +20,11 @@ public:
                          const Matrix &D, Matrix &R,
                          uint8_t *scale_count) override;
   void multiplyInPlace(const Matrix &A, const Matrix &B, Matrix &R) override;
-#endif // USE_CUBLAS
+
+  // GPU-resident scale_count lifecycle management
+  void resetScaleCount(int P); // Zero on GPU at start of traversal
+  void syncScaleCount(uint8_t *host_ptr, int P); // Copy D→H at end of traversal
+#endif                                           // USE_CUBLAS
 private:
   cublasHandle_t handle;
 
@@ -28,6 +32,10 @@ private:
   // traversal)
   double *d_baseFreq_cache = nullptr;
   size_t baseFreq_elems = 0;
+
+  // GPU-resident scale_count (persists across compositehadamard calls)
+  uint8_t *d_scale_count = nullptr;
+  size_t d_scale_count_size = 0;
 
   // Streams for async execution
   cudaStream_t stream1 = nullptr;

@@ -19,6 +19,9 @@ MatrixOpCuBLAS::~MatrixOpCuBLAS() {
   // Free cached base frequency buffer
   if (d_baseFreq_cache)
     cudaFree(d_baseFreq_cache);
+  // Free GPU-resident scale_count
+  if (d_scale_count)
+    cudaFree(d_scale_count);
   // Destroy streams
   if (stream1)
     cudaStreamDestroy(stream1);
@@ -146,12 +149,9 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
   R.allocDevice();
   double *d_R = R.deviceData();
 
-  // ===== scale_count handling =====
-  // scale_count accumulates across ALL internal node computations.
-  // Pattern: H->D copy (with accumulated counts), kernel increments, D->H copy
-  static uint8_t *d_scale_count = nullptr;
-  static size_t d_scale_count_size = 0;
-
+  // ===== scale_count: GPU-resident, no per-call copies =====
+  // d_scale_count is zeroed once per traversal by resetScaleCount()
+  // and copied D→H once by syncScaleCount() after the traversal.
   if (!d_scale_count || d_scale_count_size < (size_t)P) {
     if (d_scale_count)
       cudaFree(d_scale_count);
@@ -159,29 +159,36 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
     d_scale_count_size = P;
   }
 
-  // Copy scale_count from host to GPU (preserves accumulated counts)
-  cudaMemcpyAsync(d_scale_count, scale_count, P * sizeof(uint8_t),
-                  cudaMemcpyHostToDevice, stream1);
-
   // FUSED KERNEL + SCALING KERNEL - matches OpenACC two-loop pattern!
-  launchCompositeHadamardFused(d_A,           // Transition matrix P1
-                               d_B,           // Left child partial likelihood
-                               d_C,           // Transition matrix P2
-                               d_D,           // Right child partial likelihood
-                               d_R,           // Output: result
-                               d_scale_count, // Scale count per site
-                               numStates,     // K = number of states
-                               P,             // P = number of sites/patterns
-                               SCALING_THRESHOLD,     // Threshold for scaling
-                               SCALING_THRESHOLD_EXP, // Exponent for scalbn
-                               stream1                // CUDA stream
+  launchCompositeHadamardFused(
+      d_A,                   // Transition matrix P1
+      d_B,                   // Left child partial likelihood
+      d_C,                   // Transition matrix P2
+      d_D,                   // Right child partial likelihood
+      d_R,                   // Output: result
+      d_scale_count,         // Scale count per site (GPU-resident)
+      numStates,             // K = number of states
+      P,                     // P = number of sites/patterns
+      SCALING_THRESHOLD,     // Threshold for scaling
+      SCALING_THRESHOLD_EXP, // Exponent for scalbn
+      stream1                // CUDA stream
   );
+  // No D→H copy or sync here — scale_count stays on GPU until syncScaleCount()
+}
 
-  // Copy scale_count back to host (with new increments from this call)
-  cudaMemcpyAsync(scale_count, d_scale_count, P * sizeof(uint8_t),
+void MatrixOpCuBLAS::resetScaleCount(int P) {
+  if (!d_scale_count || d_scale_count_size < (size_t)P) {
+    if (d_scale_count)
+      cudaFree(d_scale_count);
+    cudaMalloc(&d_scale_count, P * sizeof(uint8_t));
+    d_scale_count_size = P;
+  }
+  cudaMemsetAsync(d_scale_count, 0, P * sizeof(uint8_t), stream1);
+}
+
+void MatrixOpCuBLAS::syncScaleCount(uint8_t *host_ptr, int P) {
+  cudaMemcpyAsync(host_ptr, d_scale_count, P * sizeof(uint8_t),
                   cudaMemcpyDeviceToHost, stream1);
-
-  // Sync to ensure scale_count is available on host
   cudaStreamSynchronize(stream1);
 }
 
