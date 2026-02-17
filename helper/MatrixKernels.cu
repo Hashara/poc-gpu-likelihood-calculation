@@ -73,8 +73,12 @@ hadamard_scale_kernel(const double *__restrict__ ab, // size: d_K * d_P
  *   Loop 1: compute R = (A*B) ⊙ (C*D)
  *   Loop 2: per-site max reduction + conditional scaling
  *
- * For DNA (K=4): 32 sites per block with 128 threads
- * For Protein (K=20): 6 sites per block with 120 threads
+ * Two reduction strategies based on K vs warp size:
+ *   - K divides 32 (e.g. K=4): warp-shuffle reduction (no __syncthreads)
+ *   - K doesn't divide 32 (e.g. K=20): shared memory reduction
+ *
+ * For DNA (K=4):     256 threads → 64 sites per block (warp-shuffle path)
+ * For Protein (K=20): 240 threads → 12 sites per block (shared-mem path)
  */
 __global__ void composite_hadamard_fused_kernel(
     const double *__restrict__ a,      // d_K x d_K, column-major
@@ -85,12 +89,12 @@ __global__ void composite_hadamard_fused_kernel(
     uint8_t *__restrict__ scale_count, // Per-site scale counter
     int sites_per_block, double scaling_threshold, int scaling_exp) {
 
-  // Shared memory layout: [A matrix (d_K*d_K)] [C matrix (d_K*d_K)] [reduction
-  // (blockDim.x)]
+  // Shared memory layout:
+  //   [A matrix: d_K*d_K] [C matrix: d_K*d_K] [reduction: blockDim.x (only if
+  //   K%32!=0)]
   extern __shared__ double smem[];
-  double *s_a = smem;                      // d_K*d_K elements
-  double *s_c = smem + d_K * d_K;          // d_K*d_K elements
-  double *s_reduce = smem + 2 * d_K * d_K; // blockDim.x elements
+  double *s_a = smem;             // d_K*d_K elements
+  double *s_c = smem + d_K * d_K; // d_K*d_K elements
 
   int tid = threadIdx.x;
   int threads_per_block = blockDim.x;
@@ -108,7 +112,6 @@ __global__ void composite_hadamard_fused_kernel(
   int global_site_j = blockIdx.x * sites_per_block + local_site;
 
   // --- Loop 1: Compute Hadamard product ---
-  // Inactive threads keep val = 0 so they can safely participate in reduction
   double val = 0.0;
   bool active = (global_site_j < d_P && local_site < sites_per_block);
 
@@ -126,28 +129,51 @@ __global__ void composite_hadamard_fused_kernel(
   }
 
   // --- Loop 2: Per-site max-abs reduction + scaling ---
-  // (matches OpenACC: find max per column, rescale if below threshold)
-  s_reduce[tid] = fabs(val);
-  __syncthreads();
+  double max_abs;
 
-  // Reduce within each group of d_K threads (one group per site)
-  int site_base = local_site * d_K;
-  for (int stride = d_K / 2; stride > 0; stride >>= 1) {
-    if (state_i < stride) {
-      s_reduce[site_base + state_i] =
-          fmax(s_reduce[site_base + state_i],
-               s_reduce[site_base + state_i + stride]);
+  if ((32 % d_K) == 0) {
+    // FAST PATH: K divides 32 (e.g. K=4, K=8, K=16)
+    // Site groups never straddle warp boundaries → use warp shuffles.
+    // K=4: 8 sites per warp, K=8: 4 sites per warp, K=16: 2 sites per warp.
+    int lane = threadIdx.x % 32;
+    int group_start = (lane / d_K) * d_K;
+    unsigned group_mask = (((unsigned)1 << d_K) - 1) << group_start;
+
+    double max_val = fabs(val);
+    for (int stride = 16; stride >= 1; stride >>= 1) {
+      if (stride < d_K) {
+        double other = __shfl_down_sync(group_mask, max_val, stride);
+        max_val = fmax(max_val, other);
+      }
+    }
+    // Broadcast from group leader (state_i==0)
+    max_abs = __shfl_sync(group_mask, max_val, group_start);
+  } else {
+    // SAFE PATH: K doesn't divide 32 (e.g. K=20)
+    // Site groups can straddle warp boundaries → use shared memory reduction.
+    double *s_reduce = smem + 2 * d_K * d_K;
+
+    s_reduce[tid] = fabs(val);
+    __syncthreads();
+
+    int site_base = local_site * d_K;
+    for (int stride = d_K / 2; stride > 0; stride >>= 1) {
+      if (state_i < stride) {
+        s_reduce[site_base + state_i] =
+            fmax(s_reduce[site_base + state_i],
+                 s_reduce[site_base + state_i + stride]);
+      }
+      __syncthreads();
+    }
+    // Handle odd K: fold in the last element
+    if ((d_K & 1) && state_i == 0 && d_K > 1) {
+      s_reduce[site_base] =
+          fmax(s_reduce[site_base], s_reduce[site_base + d_K - 1]);
     }
     __syncthreads();
-  }
-  // Handle odd K (e.g. K=5): fold in the last element
-  if ((d_K & 1) && state_i == 0 && d_K > 1) {
-    s_reduce[site_base] =
-        fmax(s_reduce[site_base], s_reduce[site_base + d_K - 1]);
-  }
-  __syncthreads();
 
-  double max_abs = s_reduce[site_base];
+    max_abs = s_reduce[site_base];
+  }
 
   // Rescale and write
   if (active) {
@@ -226,10 +252,10 @@ void launchCompositeHadamardFused(const double *d_A, const double *d_B,
                                   double *d_R, uint8_t *d_scale_count, int K,
                                   int P, double scaling_threshold,
                                   int scaling_exp, cudaStream_t stream) {
-  // 128 threads per block
-  // DNA (K=4):    128 threads → 32 sites per block
-  // Protein (K=20): ~6 sites per block
-  int target_threads = 128;
+  // 256 target threads per block for better occupancy
+  // DNA (K=4):     256 threads → 64 sites per block  (warp-shuffle reduction)
+  // Protein (K=20): 240 threads → 12 sites per block (shared-mem reduction)
+  int target_threads = 256;
   int sites_per_block = target_threads / K;
   if (sites_per_block < 1)
     sites_per_block = 1;
@@ -237,9 +263,12 @@ void launchCompositeHadamardFused(const double *d_A, const double *d_B,
   int threads_per_block = sites_per_block * K;
   int num_blocks = (P + sites_per_block - 1) / sites_per_block;
 
-  // Shared memory: 2 matrices (K*K each) + reduction workspace
-  // (threads_per_block)
-  size_t smem_size = (2 * K * K + threads_per_block) * sizeof(double);
+  // Shared memory: 2 matrices (K*K each)
+  // + reduction workspace (threads_per_block) only if K doesn't divide 32
+  size_t smem_size = (2 * K * K) * sizeof(double);
+  if ((32 % K) != 0) {
+    smem_size += threads_per_block * sizeof(double);
+  }
 
   composite_hadamard_fused_kernel<<<num_blocks, threads_per_block, smem_size,
                                     stream>>>(d_A, d_B, d_C, d_D, d_R,
@@ -249,11 +278,11 @@ void launchCompositeHadamardFused(const double *d_A, const double *d_B,
 
 // ========= Fused Log-Likelihood Kernel =========
 // Replaces cuBLAS DGEMM + separate reduction with a single kernel.
-// Each thread handles one site j:
-//   1. Dot product: siteL = sum_k baseFreq[k] * rootL[k + j*K]  (replaces
-//   DGEMM)
-//   2. val = freq[j] * (log(siteL) + scale_count[j] * log_scaling_threshold)
-//   3. Block-level reduction -> atomicAdd to global result
+// Uses grid-stride loop so each thread processes multiple sites,
+// increasing arithmetic intensity per thread.
+//   1. Dot product: siteL = sum_k baseFreq[k] * rootL[k + j*K]
+//   2. val += freq[j] * (log(siteL) + scale_count[j] * log_scaling_threshold)
+//   3. Block-level warp-shuffle reduction -> atomicAdd to global result
 __global__ void fused_log_likelihood_kernel(
     const double *__restrict__ baseFreq, // K values (cached on GPU)
     const double *__restrict__ rootL,    // K*P column-major (already on GPU)
@@ -265,10 +294,11 @@ __global__ void fused_log_likelihood_kernel(
   extern __shared__ double sdata[];
 
   int tid = threadIdx.x;
-  int gid = blockIdx.x * blockDim.x + tid;
+  int total_threads = gridDim.x * blockDim.x;
 
+  // Grid-stride loop: each thread accumulates over multiple sites
   double val = 0.0;
-  if (gid < P) {
+  for (int gid = blockIdx.x * blockDim.x + tid; gid < P; gid += total_threads) {
     // Dot product replaces cuBLAS DGEMM for M=1
     // For DNA (K=4): just 4 MADs, compiler unrolls this
     double siteL = 0.0;
@@ -276,7 +306,7 @@ __global__ void fused_log_likelihood_kernel(
     for (int k = 0; k < K; ++k) {
       siteL += baseFreq[k] * col[k];
     }
-    val = freq[gid] * (log(siteL) + scale_count[gid] * log_scaling_threshold);
+    val += freq[gid] * (log(siteL) + scale_count[gid] * log_scaling_threshold);
   }
 
   sdata[tid] = val;
@@ -302,8 +332,12 @@ void launchFusedLogLikelihood(const double *d_baseFreq, const double *d_rootL,
                               cudaStream_t stream) {
   cudaMemsetAsync(d_result, 0, sizeof(double), stream);
 
-  int threads = 256;
+  // 128 threads with capped grid: grid-stride loop handles overflow
+  int threads = 128;
   int blocks = (P + threads - 1) / threads;
+  // Cap grid size to avoid excessive blocks for very large P
+  if (blocks > 256)
+    blocks = 256;
   size_t smem = threads * sizeof(double);
 
   fused_log_likelihood_kernel<<<blocks, threads, smem, stream>>>(
