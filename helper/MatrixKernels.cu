@@ -104,7 +104,7 @@ __global__ void composite_hadamard_fused_kernel(
 
   if constexpr (K <= 4) {
     // =====================================================================
-    // FAST PATH: K=4 (DNA) — register-cached, vectorized, no shared memory
+    // K=4 (DNA) — register-cached, vectorized, no shared memory
     // =====================================================================
     // Each thread loads its own row of A and C into registers.
     // 4×4 = 16 doubles per matrix = 128 bytes — fits easily in registers.
@@ -124,6 +124,8 @@ __global__ void composite_hadamard_fused_kernel(
       double s1 = 0.0, s2 = 0.0;
 #pragma unroll
       for (int k = 0; k < K; k += 2) {
+          // Vectorize the dot products by loading two doubles at once (double2), so each loop step handles k and k+1 together.
+          //  This reduces memory transactions and computes s1/s2 two terms at a time, which is faster for small K (e.g., 4).
         double2 bv = *reinterpret_cast<const double2 *>(&bj[k]);
         double2 dv = *reinterpret_cast<const double2 *>(&dj[k]);
         s1 += a_row[k] * bv.x + a_row[k + 1] * bv.y;
@@ -133,8 +135,12 @@ __global__ void composite_hadamard_fused_kernel(
     }
   } else {
     // =====================================================================
-    // GENERAL PATH: K>4 (e.g. K=20 for AA) — shared memory cached
+    //  K>4 (e.g. K=20 for AA) — shared memory cached
     // =====================================================================
+    // smem is one contiguous dynamic shared memory buffer.
+    // s_a uses the first K*K doubles (first KxK matrix).
+    // s_c is offset by K*K doubles, so it starts immediately after s_a (second KxK matrix).
+
     extern __shared__ double smem[];
     double *s_a = smem;
     double *s_c = smem + K * K;
@@ -144,6 +150,8 @@ __global__ void composite_hadamard_fused_kernel(
 // Cooperatively load A and C into shared memory
 #pragma unroll 4
     for (int idx = tid; idx < K * K; idx += threads_per_block) {
+        // Use __ldg for read-only global memory access to leverage the read-only data
+        // https://docs.nvidia.com/cuda/archive/12.8.1/cuda-c-programming-guide/index.html?utm_source=openai#read-only-data-cache-load-function
       s_a[idx] = __ldg(&a[idx]);
       s_c[idx] = __ldg(&c[idx]);
     }
@@ -184,6 +192,10 @@ __global__ void composite_hadamard_fused_kernel(
         max_val = fmax(max_val, other);
       }
     }
+    // _shfl_down_sync is a CUDA warp‑shuffle intrinsic provided by NVIDIA,
+    // https://people.maths.ox.ac.uk/gilesm/cuda/lecs/lec4.pdf
+    // It’s a built‑in GPU instruction used to exchange values between threads in
+    // the same warp without shared memory
     max_abs = __shfl_sync(group_mask, max_val, group_start);
   } else {
     // SHARED-MEMORY PATH: K doesn't divide 32
@@ -376,7 +388,7 @@ void launchCompositeHadamardFused(const double *d_A, const double *d_B,
   if (K > 4) {
     smem_size = (2 * K * K) * sizeof(double);
   }
-  if ((32 % K) != 0) {
+  if ((32 % K) != 0) { // CUDA warp is 32 threads; if K doesn't divide 32, we need shared memory for reduction
     smem_size += threads_per_block * sizeof(double);
   }
 
