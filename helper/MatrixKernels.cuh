@@ -4,51 +4,47 @@
 
 #ifndef POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXKERNELS_CUH
 #define POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXKERNELS_CUH
-#include <cstdint>   // for uint8_t
-
+#include <cstdint> // for uint8_t
 
 #pragma once
-__global__ void hadamardKernel(const double* A, const double* B, double* C, int size);
-__global__ void hadamard_scale_kernel(
-        const double* __restrict__ ab,   // size: numStates * P
-        const double* __restrict__ cd,   // size: numStates * P
-        double* __restrict__ r,          // size: numStates * P
-        uint8_t* __restrict__ scale_count,
-        int numStates,
-        int P,
-        double scaling_threshold,
-        int scaling_exp
-);
-__global__ void composite_hadamard_fused_kernel(
-        const double* __restrict__ a, // KxK, column-major: a[k*K + i] = A(i,k)
-        const double* __restrict__ b, // KxP, site-major columns: b[j*K + k] = B(k,j)
-        const double* __restrict__ c, // KxK, column-major
-        const double* __restrict__ d, // KxP, site-major columns
-        double* __restrict__ r,       // KxP, site-major columns: r[j*K + i]
-        int K,
-        int P
-);
 
-void launchHadamard(const double* A, const double* B, double* C, int size, int blockSize);
-void launchCompositeHadamard(
-        const double* d_AB,
-        const double* d_CD,
-        double* d_R,
-        uint8_t* d_scale_count,
-        int numStates,
-        int P,
-        int blockSize,
-        double scaling_threshold,
-        int scaling_exp
-);
-void launchCompositeHadamardFused(
-        const double* d_A,
-        const double* d_B,
-        const double* d_C,
-        const double* d_D,
-        double* d_R,
-        int K,
-        int P,
-        cudaStream_t stream
-);
-#endif //POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXKERNELS_CUH
+// Set constant memory values for K (numStates) and P (num sites)
+// Must be called once before any kernel launch
+void setKernelConstants(int K, int P);
+__global__ void hadamardKernel(const double *A, const double *B, double *C,
+                               int size);
+__global__ void hadamard_scale_kernel(const double *__restrict__ ab,
+                                      const double *__restrict__ cd,
+                                      double *__restrict__ r,
+                                      uint8_t *__restrict__ scale_count,
+                                      double scaling_threshold,
+                                      int scaling_exp);
+__global__ void composite_hadamard_fused_kernel(
+    const double *__restrict__ a, const double *__restrict__ b,
+    const double *__restrict__ c, const double *__restrict__ d,
+    double *__restrict__ r, uint8_t *__restrict__ scale_count,
+    int sites_per_block, double scaling_threshold, int scaling_exp);
+
+__global__ void scaling_kernel(double *__restrict__ r,
+                               uint8_t *__restrict__ scale_count,
+                               double scaling_threshold, int scaling_exp);
+
+void launchHadamard(const double *A, const double *B, double *C, int size,
+                    int blockSize);
+void launchCompositeHadamard(const double *d_AB, const double *d_CD,
+                             double *d_R, uint8_t *d_scale_count, int numStates,
+                             int P, int blockSize, double scaling_threshold,
+                             int scaling_exp);
+void launchCompositeHadamardFused(const double *d_A, const double *d_B,
+                                  const double *d_C, const double *d_D,
+                                  double *d_R, uint8_t *d_scale_count, int K,
+                                  int P, double scaling_threshold,
+                                  int scaling_exp, cudaStream_t stream);
+
+void launchFusedLogLikelihood(const double *d_baseFreq, const double *d_rootL,
+                              const uint8_t *d_scale_count, const int *d_freq,
+                              double *d_result, int K, int P,
+                              double log_scaling_threshold,
+                              cudaStream_t stream);
+
+#endif // POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXKERNELS_CUH

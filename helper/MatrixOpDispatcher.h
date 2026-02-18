@@ -5,12 +5,11 @@
 #ifndef POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPDISPATCHER_H
 #define POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPDISPATCHER_H
 
-
 #ifndef USE_EIGEN
 
 #include "MatrixOp.h"
-#include "MatrixOpType.h"
 #include "MatrixOpCPU.h"
+#include "MatrixOpType.h"
 
 #ifdef USE_OPENACC
 #include "MatrixOpOpenACC.h"
@@ -23,36 +22,75 @@
 #endif
 
 // Function to return a backend singleton based on MatrixOpType
-inline MatrixOp* getBackend(MatrixOpType type) {
-    switch (type) {
-        case MatrixOpType::CPU: {
-            static MatrixOpCPU op;
-            return &op;
-        }
+inline MatrixOp *getBackend(MatrixOpType type) {
+  switch (type) {
+  case MatrixOpType::CPU: {
+    static MatrixOpCPU op;
+    return &op;
+  }
 #ifdef USE_OPENACC
-            case MatrixOpType::OPENACC: {
-            static MatrixOpOpenACC op;
-            return &op;
-        }
+  case MatrixOpType::OPENACC: {
+    static MatrixOpOpenACC op;
+    return &op;
+  }
 #elif defined(USE_CUBLAS) && defined(USE_CUDA)
-        case MatrixOpType::CUBLAS: {
-            static MatrixOpCuBLAS op;
-            return &op;
-        }
+  case MatrixOpType::CUBLAS: {
+    static MatrixOpCuBLAS op;
+    return &op;
+  }
 #elif defined(USE_CUDA)
-        case MatrixOpType::CUDA_KERNEL: {
-            static MatrixOpCUDA op;
-            return &op;
-        }
+  case MatrixOpType::CUDA_KERNEL: {
+    static MatrixOpCUDA op;
+    return &op;
+  }
 #elif defined(USE_OPENMP_GPU)
-        case MatrixOpType::OPENMP_GPU: {
-            static MatrixOpOpenMPGPU op;
-            return &op;
-        }
+  case MatrixOpType::OPENMP_GPU: {
+    static MatrixOpOpenMPGPU op;
+    return &op;
+  }
 #endif
-        default:
-            throw std::invalid_argument("Unsupported MatrixOpType in getBackend");
-    }
+  default:
+    throw std::invalid_argument("Unsupported MatrixOpType in getBackend");
+  }
 }
+
+#if defined(USE_CUBLAS) && defined(USE_CUDA)
+// Helper to get CUBLAS stream for reuse in LikelihoodCalculator
+inline cudaStream_t getCuBLASStream() {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  return op ? op->getStream() : nullptr;
+}
+
+// Helper to zero GPU-resident scale_count at start of traversal
+inline void resetCuBLASScaleCount(int P) {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  if (op)
+    op->resetScaleCount(P);
+}
+
+// Helper to copy GPU-resident scale_count back to host after traversal
+inline void syncCuBLASScaleCount(uint8_t *host_ptr, int P) {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  if (op)
+    op->syncScaleCount(host_ptr, P);
+}
+
+// Helper to compute log-likelihood entirely on GPU (DGEMM + reduction)
+inline double computeCuBLASLogLikelihood(const Matrix &baseFreq,
+                                         const Matrix &rootL, const int *freq,
+                                         int numPatterns,
+                                         double log_scaling_threshold) {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  if (op)
+    return op->computeLogLikelihood(baseFreq, rootL, freq, numPatterns,
+                                    log_scaling_threshold);
+  return 0.0;
+}
+#endif
+
 #endif // USE_EIGEN
-#endif //POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPDISPATCHER_H
+#endif // POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXOPDISPATCHER_H
