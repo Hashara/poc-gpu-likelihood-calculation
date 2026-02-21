@@ -164,20 +164,19 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
     d_scale_count_size = P;
   }
 
-  // FUSED KERNEL + SCALING KERNEL - matches OpenACC two-loop pattern!
-  launchCompositeHadamardFused(
-      d_A,                   // Transition matrix P1
-      d_B,                   // Left child partial likelihood
-      d_C,                   // Transition matrix P2
-      d_D,                   // Right child partial likelihood
-      d_R,                   // Output: result
-      d_scale_count,         // Scale count per site (GPU-resident)
-      numStates,             // K = number of states
-      P,                     // P = number of sites/patterns
-      SCALING_THRESHOLD,     // Threshold for scaling
-      SCALING_THRESHOLD_EXP, // Exponent for scalbn
-      stream1                // CUDA stream
-  );
+  // Use state-specialized fused kernels directly.
+  if (numStates == 4) {
+    launchCompositeHadamardFused_DNA4(
+        d_A, d_B, d_C, d_D, d_R, d_scale_count, P, SCALING_THRESHOLD,
+        SCALING_THRESHOLD_EXP, stream1);
+  } else if (numStates == 20) {
+    launchCompositeHadamardFused_AA20(
+        d_A, d_B, d_C, d_D, d_R, d_scale_count, P, SCALING_THRESHOLD,
+        SCALING_THRESHOLD_EXP, stream1);
+  } else {
+    throw std::invalid_argument(
+        "MatrixOpCuBLAS::compositehadamard only supports numStates 4 or 20");
+  }
   // No D->H copy or sync here -- scale_count stays on GPU until
   // syncScaleCount()
 }

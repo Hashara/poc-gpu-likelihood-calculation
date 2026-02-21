@@ -46,5 +46,37 @@ void launchFusedLogLikelihood(const double *d_baseFreq, const double *d_rootL,
                               double *d_result, int K, int P,
                               double log_scaling_threshold,
                               cudaStream_t stream);
+__global__ void composite_hadamard_fused_kernel_dna4(
+        const double *__restrict__ a,      // 4 x 4, column-major
+        const double *__restrict__ b,      // 4 x P, site-major
+        const double *__restrict__ c,      // 4 x 4, column-major
+        const double *__restrict__ d,      // 4 x P, site-major
+        double *__restrict__ r,            // 4 x P, site-major
+        uint8_t *__restrict__ scale_count, // per-site
+        int sites_per_block, int P, double scaling_threshold, int scaling_exp);
+
+__global__ void composite_hadamard_fused_kernel_aa20(
+        const double *__restrict__ a,      // 20 x 20, column-major
+        const double *__restrict__ b,      // 20 x P, site-major
+        const double *__restrict__ c,      // 20 x 20, column-major
+        const double *__restrict__ d,      // 20 x P, site-major
+        double *__restrict__ r,            // 20 x P, site-major
+        uint8_t *__restrict__ scale_count, // per-site
+        int sites_per_block, int P, double scaling_threshold, int scaling_exp);
+
+void launchCompositeHadamardFused_DNA4(
+        const double *d_A, const double *d_B,
+        const double *d_C, const double *d_D,
+        double *d_R, uint8_t *d_scale_count,
+        int P, double scaling_threshold, int scaling_exp,
+        cudaStream_t stream);
+
+void launchCompositeHadamardFused_AA20(
+        const double *d_A, const double *d_B,
+        const double *d_C, const double *d_D,
+        double *d_R, uint8_t *d_scale_count,
+        int P, double scaling_threshold, int scaling_exp,
+        cudaStream_t stream);
+
 
 #endif // POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXKERNELS_CUH

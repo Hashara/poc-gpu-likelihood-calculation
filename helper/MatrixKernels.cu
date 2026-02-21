@@ -236,6 +236,160 @@ __global__ void composite_hadamard_fused_kernel(
   }
 }
 
+__global__ void composite_hadamard_fused_kernel_dna4(
+        const double *__restrict__ a,      // 4 x 4, column-major
+        const double *__restrict__ b,      // 4 x P, site-major
+        const double *__restrict__ c,      // 4 x 4, column-major
+        const double *__restrict__ d,      // 4 x P, site-major
+        double *__restrict__ r,            // 4 x P, site-major
+        uint8_t *__restrict__ scale_count, // per-site
+        int sites_per_block, int P, double scaling_threshold, int scaling_exp)
+{
+    constexpr int K = 4;
+
+    int tid = threadIdx.x;
+    int local_site = tid / K;
+    int state_i    = tid % K;
+    int global_site_j = blockIdx.x * sites_per_block + local_site;
+
+    bool active = (global_site_j < P && local_site < sites_per_block);
+
+    // ---- Load A,C rows into registers (each thread holds one row/col slice) ----
+    double a_row[K], c_row[K];
+#pragma unroll
+    for (int k = 0; k < K; ++k) {
+        a_row[k] = __ldg(&a[k * K + state_i]);
+        c_row[k] = __ldg(&c[k * K + state_i]);
+    }
+
+    double val = 0.0;
+    if (active) {
+        const double *bj = &b[global_site_j * K];
+        const double *dj = &d[global_site_j * K];
+
+        // Vectorized dot (two doubles at once)
+        double s1 = 0.0, s2 = 0.0;
+#pragma unroll
+        for (int k = 0; k < K; k += 2) {
+            double2 bv = *reinterpret_cast<const double2 *>(&bj[k]);
+            double2 dv = *reinterpret_cast<const double2 *>(&dj[k]);
+            s1 += a_row[k]     * bv.x + a_row[k + 1] * bv.y;
+            s2 += c_row[k]     * dv.x + c_row[k + 1] * dv.y;
+        }
+        val = s1 * s2;
+    }
+
+    // ---- Per-site max-abs reduction (warp shuffle path, since 32 % 4 == 0) ----
+    int lane = tid % 32;
+    int group_start = (lane / K) * K;
+    unsigned group_mask = (((unsigned)1 << K) - 1) << group_start;
+
+    double max_val = fabs(val);
+#pragma unroll
+    for (int stride = 16; stride >= 1; stride >>= 1) {
+        if (stride < K) {
+            double other = __shfl_down_sync(group_mask, max_val, stride);
+            max_val = fmax(max_val, other);
+        }
+    }
+    double max_abs = __shfl_sync(group_mask, max_val, group_start);
+
+    // ---- Rescale and write ----
+    if (active) {
+        if (max_abs < scaling_threshold && max_abs > 0.0) {
+            val = scalbn(val, scaling_exp);
+            if (state_i == 0) scale_count[global_site_j] += 1;
+        }
+        r[global_site_j * K + state_i] = val;
+    }
+}
+
+__global__ void composite_hadamard_fused_kernel_aa20(
+        const double *__restrict__ a,      // 20 x 20, column-major
+        const double *__restrict__ b,      // 20 x P, site-major
+        const double *__restrict__ c,      // 20 x 20, column-major
+        const double *__restrict__ d,      // 20 x P, site-major
+        double *__restrict__ r,            // 20 x P, site-major
+        uint8_t *__restrict__ scale_count, // per-site
+        int sites_per_block, int P, double scaling_threshold, int scaling_exp)
+{
+    constexpr int K = 20;
+
+    int tid = threadIdx.x;
+    int local_site = tid / K;
+    int state_i    = tid % K;
+    int global_site_j = blockIdx.x * sites_per_block + local_site;
+
+    bool active = (global_site_j < P && local_site < sites_per_block);
+
+    extern __shared__ double smem[];
+    // Layout: [A (K*K)] [C (K*K)] [reduce (threads_per_block)]
+    double *s_a      = smem;                 // K*K
+    double *s_c      = smem + K * K;         // K*K
+    double *s_reduce = smem + 2 * K * K;     // blockDim.x
+
+    int threads_per_block = blockDim.x;
+
+    // ---- Cooperative load A/C ----
+    for (int idx = tid; idx < K * K; idx += threads_per_block) {
+        s_a[idx] = __ldg(&a[idx]);
+        s_c[idx] = __ldg(&c[idx]);
+    }
+    __syncthreads();
+
+    // ---- Compute ----
+    double val = 0.0;
+    if (active) {
+        const double *bj = &b[global_site_j * K];
+        const double *dj = &d[global_site_j * K];
+
+        double s1 = 0.0, s2 = 0.0;
+#pragma unroll
+        for (int k = 0; k < K; ++k) {
+            double bk = __ldg(&bj[k]);
+            double dk = __ldg(&dj[k]);
+            s1 += s_a[k * K + state_i] * bk;
+            s2 += s_c[k * K + state_i] * dk;
+        }
+        val = s1 * s2;
+    }
+
+    // ---- Per-site reduction in shared memory (since 32 % 20 != 0) ----
+    s_reduce[tid] = fabs(val);
+    __syncthreads();
+
+    int site_base = local_site * K;
+
+    // Tree reduction assumes power-of-two; handle remainder carefully for K=20
+    // Reduce 20 -> 10 -> 5 -> 2 -> 1 (with cleanup)
+    if (state_i < 10) s_reduce[site_base + state_i] = fmax(s_reduce[site_base + state_i],
+                                                           s_reduce[site_base + state_i + 10]);
+    __syncthreads();
+
+    if (state_i < 5)  s_reduce[site_base + state_i] = fmax(s_reduce[site_base + state_i],
+                                                           s_reduce[site_base + state_i + 5]);
+    __syncthreads();
+
+    if (state_i < 2)  s_reduce[site_base + state_i] = fmax(s_reduce[site_base + state_i],
+                                                           s_reduce[site_base + state_i + 2]);
+    __syncthreads();
+
+    if (state_i == 0) s_reduce[site_base] = fmax(s_reduce[site_base],
+                                                 s_reduce[site_base + 1]);
+    __syncthreads();
+
+    double max_abs = s_reduce[site_base];
+
+    // ---- Rescale and write ----
+    if (active) {
+        if (max_abs < scaling_threshold && max_abs > 0.0) {
+            val = scalbn(val, scaling_exp);
+            if (state_i == 0) scale_count[global_site_j] += 1;
+        }
+        r[global_site_j * K + state_i] = val;
+    }
+}
+
 /**
  * Scaling kernel - runs AFTER the fused kernel to match OpenACC pattern
  * One block per site (column), finds max and rescales if needed
@@ -450,4 +604,49 @@ void launchFusedLogLikelihood(const double *d_baseFreq, const double *d_rootL,
         log_scaling_threshold);
     break;
   }
+}
+
+void launchCompositeHadamardFused_DNA4(
+        const double *d_A, const double *d_B,
+        const double *d_C, const double *d_D,
+        double *d_R, uint8_t *d_scale_count,
+        int P, double scaling_threshold, int scaling_exp,
+        cudaStream_t stream)
+{
+    constexpr int K = 4;
+    int target_threads = 256;
+    int sites_per_block = target_threads / K; // 64
+    if (sites_per_block < 1) sites_per_block = 1;
+
+    int threads_per_block = sites_per_block * K;
+    int num_blocks = (P + sites_per_block - 1) / sites_per_block;
+
+    composite_hadamard_fused_kernel_dna4<<<
+    num_blocks, threads_per_block, 0, stream>>>(
+            d_A, d_B, d_C, d_D, d_R, d_scale_count,
+            sites_per_block, P, scaling_threshold, scaling_exp);
+}
+
+void launchCompositeHadamardFused_AA20(
+        const double *d_A, const double *d_B,
+        const double *d_C, const double *d_D,
+        double *d_R, uint8_t *d_scale_count,
+        int P, double scaling_threshold, int scaling_exp,
+        cudaStream_t stream)
+{
+    constexpr int K = 20;
+    int target_threads = 256;
+    int sites_per_block = target_threads / K; // 12 (since 256/20=12)
+    if (sites_per_block < 1) sites_per_block = 1;
+
+    int threads_per_block = sites_per_block * K; // 240
+    int num_blocks = (P + sites_per_block - 1) / sites_per_block;
+
+    // [A 400] + [C 400] + [reduce 240] doubles
+    size_t smem_size = sizeof(double) * (2 * K * K + threads_per_block);
+
+    composite_hadamard_fused_kernel_aa20<<<
+    num_blocks, threads_per_block, smem_size, stream>>>(
+            d_A, d_B, d_C, d_D, d_R, d_scale_count,
+            sites_per_block, P, scaling_threshold, scaling_exp);
 }
