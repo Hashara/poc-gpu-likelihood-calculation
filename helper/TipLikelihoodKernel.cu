@@ -11,14 +11,27 @@ __global__ void build_tip_partials_kernel(
         int numStates,
         int numPatterns
 ) {
-    int p = (int)blockIdx.x;                          // pattern index
-    int s = (int)(blockIdx.y * blockDim.x + threadIdx.x); // state index
-
-    if (p >= numPatterns || s >= numStates) return;
+    int p = (int)(blockIdx.x * blockDim.x + threadIdx.x); // pattern index
+    if (p >= numPatterns) return;
 
     uint8_t ss = tip8[p];
-    l[(size_t)p * (size_t)numStates + (size_t)s] =
-            (ss == 0xFF) ? 1.0 : ((s == (int)ss) ? 1.0 : 0.0);
+    size_t base = (size_t)p * (size_t)numStates;
+
+    if (ss == 0xFF) {
+        // Ambiguous/missing state: all ones.
+        for (int s = 0; s < numStates; ++s) {
+            l[base + (size_t)s] = 1.0;
+        }
+        return;
+    }
+
+    // One-hot state vector.
+    for (int s = 0; s < numStates; ++s) {
+        l[base + (size_t)s] = 0.0;
+    }
+    if ((int)ss < numStates) {
+        l[base + (size_t)ss] = 1.0;
+    }
 }
 
 void launchBuildTipPartials(
@@ -29,8 +42,8 @@ void launchBuildTipPartials(
         int blockSize,
         cudaStream_t stream
 ) {
-    dim3 grid(numPatterns, (numStates + blockSize - 1) / blockSize);
     dim3 block(blockSize);
+    dim3 grid((numPatterns + blockSize - 1) / blockSize);
 
     build_tip_partials_kernel<<<grid, block, 0, stream>>>(
             d_tip8,

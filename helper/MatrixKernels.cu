@@ -449,6 +449,7 @@ __global__ void fused_log_likelihood_kernel(
     const int *__restrict__ freq,            // P-length pattern frequencies
     double *__restrict__ d_result,           // single output scalar
     int P, double log_scaling_threshold) {
+  constexpr double kMinSiteLikelihood = 1.0e-300;
 
   extern __shared__ double sdata[];
 
@@ -482,6 +483,8 @@ __global__ void fused_log_likelihood_kernel(
       }
     }
 
+    // Guard against rare zero/denorm underflow so log() cannot produce -inf.
+    siteL = fmax(siteL, kMinSiteLikelihood);
     val += __ldg(&freq[gid]) *
            (log(siteL) + __ldg(&scale_count[gid]) * log_scaling_threshold);
   }

@@ -115,7 +115,8 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
     }
     if (cudaMallocHost(&h_tip8_pinned_, numPatterns * sizeof(uint8_t)) !=
         cudaSuccess) {
-      throw std::runtime_error("Failed to allocate pinned host buffer for tip states.");
+      throw std::runtime_error(
+          "Failed to allocate pinned host buffer for tip states.");
     }
     h_tip8_pinned_size_ = (size_t)numPatterns;
   }
@@ -546,6 +547,7 @@ double
 LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
                                                     uint8_t *scale_count) {
   double logL = 0.0;
+  constexpr double kMinSiteLikelihood = 1.0e-300;
 
 #ifdef VERBOSE
   cout << "Root partial likelihood matrix:\n";
@@ -598,6 +600,8 @@ LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
     present(sl[0 : numPatterns], freqData[0 : numPatterns])
   for (int j = 0; j < numPatterns; ++j) {
     double siteLikelihood = sl[j]; // 1-row matrix, first row
+    if (siteLikelihood < kMinSiteLikelihood)
+      siteLikelihood = kMinSiteLikelihood;
     logL += freqData[j] *
             (std::log(siteLikelihood) + scale_count[j] * LOG_SCALING_THRESHOLD);
   }
@@ -615,6 +619,8 @@ LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
   for (int j = 0; j < numPatterns; ++j) {
     double siteLikelihood =
         siteLikelihoods(0, j); // Assuming siteLikelihoods is a 1-row matrix
+    if (siteLikelihood < kMinSiteLikelihood)
+      siteLikelihood = kMinSiteLikelihood;
 
     // Multiply by the pattern frequency
     int freq = aln_->patterns[j].frequency;

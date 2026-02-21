@@ -23,6 +23,11 @@ MatrixOpType Matrix::m_opType = MatrixOpType::CPU;
 
 Matrix::Matrix(size_t rows, size_t cols)
     : m_rows(rows), m_cols(cols), m_data(nullptr) {
+#if defined(USE_CUBLAS)
+  if (m_opType == MatrixOpType::CUBLAS) {
+    return; // Device-first path: allocate host buffer lazily on demand.
+  }
+#endif
   m_data = new double[rows * cols]();
 }
 
@@ -35,8 +40,12 @@ Matrix::~Matrix() {
 
 Matrix::Matrix(const Matrix &other)
     : m_rows(other.m_rows), m_cols(other.m_cols) {
-  m_data = new double[m_rows * m_cols];
-  std::memcpy(m_data, other.m_data, sizeof(double) * m_rows * m_cols);
+  if (other.m_data) {
+    m_data = new double[m_rows * m_cols];
+    std::memcpy(m_data, other.m_data, sizeof(double) * m_rows * m_cols);
+  } else {
+    m_data = nullptr;
+  }
 }
 
 Matrix &Matrix::operator=(const Matrix &other) {
@@ -44,37 +53,53 @@ Matrix &Matrix::operator=(const Matrix &other) {
     delete[] m_data;
     m_rows = other.m_rows;
     m_cols = other.m_cols;
-    m_data = new double[m_rows * m_cols];
-    std::memcpy(m_data, other.m_data, sizeof(double) * m_rows * m_cols);
+    if (other.m_data) {
+      m_data = new double[m_rows * m_cols];
+      std::memcpy(m_data, other.m_data, sizeof(double) * m_rows * m_cols);
+    } else {
+      m_data = nullptr;
+    }
   }
   return *this;
 }
 
-double *Matrix::data() { return m_data; }
-const double *Matrix::data() const { return m_data; }
+double *Matrix::data() {
+  if (!m_data) {
+    m_data = new double[m_rows * m_cols]();
+  }
+  return m_data;
+}
+const double *Matrix::data() const {
+  if (!m_data) {
+    const_cast<Matrix *>(this)->m_data = new double[m_rows * m_cols]();
+  }
+  return m_data;
+}
 
 size_t Matrix::rows() const { return m_rows; }
 size_t Matrix::cols() const { return m_cols; }
 
 void Matrix::fill(double val) {
-  std::fill(m_data, m_data + m_rows * m_cols, val);
+  double *ptr = data();
+  std::fill(ptr, ptr + m_rows * m_cols, val);
 }
 
 void Matrix::fillRandom(unsigned int seed) {
   std::mt19937 gen(seed); // Seeded RNG
   std::uniform_real_distribution<> dis(0.0, 1.0);
+  double *ptr = data();
 
   for (size_t i = 0; i < m_rows * m_cols; ++i) {
-    m_data[i] = dis(gen);
+    ptr[i] = dis(gen);
   }
 }
 
 double &Matrix::operator()(size_t i, size_t j) {
-  return m_data[j * m_rows + i]; // column-major
+  return data()[j * m_rows + i]; // column-major
 }
 
 const double &Matrix::operator()(size_t i, size_t j) const {
-  return m_data[j * m_rows + i]; // column-major
+  return data()[j * m_rows + i]; // column-major
 }
 
 Matrix Matrix::operator*(const Matrix &other) const {
@@ -87,13 +112,26 @@ Matrix Matrix::hadamard(const Matrix &other) const {
 
 // New method
 void Matrix::resize(size_t rows, size_t cols) {
-  if (m_rows == rows && m_cols == cols && m_data)
-    return; // already the right size, skip reallocation
+  if (m_rows == rows && m_cols == cols) {
+#if defined(USE_CUBLAS)
+    if (m_opType == MatrixOpType::CUBLAS) {
+      return; // Keep device buffer shape; no host allocation needed.
+    }
+#endif
+    if (m_data)
+      return; // already the right size, skip reallocation
+  }
   if (m_data) {
     delete[] m_data;
+    m_data = nullptr;
   }
   m_rows = rows;
   m_cols = cols;
+#if defined(USE_CUBLAS)
+  if (m_opType == MatrixOpType::CUBLAS) {
+    return; // Device-first path: keep shape and defer host allocation.
+  }
+#endif
   m_data = new double[rows * cols];
 }
 
@@ -125,15 +163,14 @@ void Matrix::allocDevice() {
   d_elems = elems;
 
   cudaMalloc(&d_data, d_elems * sizeof(double));
-
-  if (!h2d_event) {
-    cudaEventCreateWithFlags(&h2d_event, cudaEventDisableTiming);
-  }
 }
 
 void Matrix::copyHtoDAsync(cudaStream_t stream) {
   allocDevice();
-  cudaMemcpyAsync(d_data, m_data, d_elems * sizeof(double),
+  if (!h2d_event) {
+    cudaEventCreateWithFlags(&h2d_event, cudaEventDisableTiming);
+  }
+  cudaMemcpyAsync(d_data, data(), d_elems * sizeof(double),
                   cudaMemcpyHostToDevice, stream);
   cudaEventRecord(h2d_event, stream);
 }
@@ -159,7 +196,7 @@ void Matrix::freeDevice() {
 void Matrix::copyDtoHAsync(cudaStream_t stream) {
   if (!d_data)
     return; // or allocDevice(), but usually you expect device to exist
-  cudaMemcpyAsync(m_data, d_data, d_elems * sizeof(double),
+  cudaMemcpyAsync(data(), d_data, d_elems * sizeof(double),
                   cudaMemcpyDeviceToHost, stream);
   if (!d2h_event) {
     cudaEventCreateWithFlags(&d2h_event, cudaEventDisableTiming);

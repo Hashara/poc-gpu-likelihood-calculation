@@ -179,9 +179,8 @@ void MatrixOpCuBLAS::compositehadamardSpecialized(
   double *d_C = C.deviceData();
   double *d_D = D.deviceData();
 
-  // Wait for transition matrices to finish uploading (they use stream 0)
-  A.waitHtoD(stream1);
-  C.waitHtoD(stream1);
+  // Transition matrices are produced on stream1 in the CUBLAS path.
+  // No cross-stream wait is needed here.
 
   R.allocDevice();
   double *d_R = R.deviceData();
