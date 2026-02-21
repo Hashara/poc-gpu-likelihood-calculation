@@ -10,6 +10,7 @@
 #include "MatrixOp.h"
 #include "MatrixOpCPU.h"
 #include "MatrixOpType.h"
+#include <stdexcept>
 
 #ifdef USE_OPENACC
 #include "MatrixOpOpenACC.h"
@@ -89,6 +90,20 @@ inline double computeCuBLASLogLikelihood(const Matrix &baseFreq,
     return op->computeLogLikelihood(baseFreq, rootL, freq, numPatterns,
                                     log_scaling_threshold);
   return 0.0;
+}
+
+template <int K>
+inline void compositeCuBLASHadamard(const Matrix &A, const Matrix &B,
+                                    const Matrix &C, const Matrix &D, Matrix &R,
+                                    uint8_t *scale_count) {
+  static_assert(K == 4 || K == 20,
+                "compositeCuBLASHadamard only supports K=4 or K=20");
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  if (!op) {
+    throw std::runtime_error("CUBLAS backend is not available");
+  }
+  op->template compositehadamardSpecialized<K>(A, B, C, D, R, scale_count);
 }
 #endif
 

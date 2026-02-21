@@ -128,24 +128,45 @@ Matrix MatrixOpCuBLAS::hadamard(const Matrix &A, const Matrix &B) {
 void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
                                        const Matrix &C, const Matrix &D,
                                        Matrix &R, uint8_t *scale_count) {
+  switch (numStates) {
+  case 4:
+    compositehadamardSpecialized<4>(A, B, C, D, R, scale_count);
+    break;
+  case 20:
+    compositehadamardSpecialized<20>(A, B, C, D, R, scale_count);
+    break;
+  default:
+    throw std::invalid_argument(
+        "MatrixOpCuBLAS::compositehadamard only supports numStates 4 or 20");
+  }
+}
+
+template <int K>
+void MatrixOpCuBLAS::compositehadamardSpecialized(
+    const Matrix &A, const Matrix &B, const Matrix &C, const Matrix &D,
+    Matrix &R, uint8_t *scale_count) {
+  static_assert(K == 4 || K == 20,
+                "compositehadamardSpecialized only supports K=4 or K=20");
+
+  (void)scale_count; // scale_count is GPU-resident in d_scale_count for CUBLAS.
   const int P = (int)B.cols();
 
-  // Set constant memory once (K and P are fixed for the entire execution)
+  // Set constant memory once per K path.
   static bool constants_set = false;
   if (!constants_set) {
-    setKernelConstants(numStates, P);
+    setKernelConstants(K, P);
     constants_set = true;
   }
 
-  R.resize(numStates, P);
+  R.resize(K, P);
 
   // All matrices are now pre-uploaded to GPU:
   // - A, C: uploaded by Model::buildTransitionMatrix()
   // - B, D: uploaded by buildTipLikelihood() or previous compositehadamard()
-  double *d_A = A.deviceData(); // Pre-uploaded by buildTransitionMatrix
-  double *d_B = B.deviceData(); // Pre-uploaded by buildTipLikelihood
-  double *d_C = C.deviceData(); // Pre-uploaded by buildTransitionMatrix
-  double *d_D = D.deviceData(); // Pre-uploaded by buildTipLikelihood
+  double *d_A = A.deviceData();
+  double *d_B = B.deviceData();
+  double *d_C = C.deviceData();
+  double *d_D = D.deviceData();
 
   // Wait for transition matrices to finish uploading (they use stream 0)
   A.waitHtoD(stream1);
@@ -154,9 +175,8 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
   R.allocDevice();
   double *d_R = R.deviceData();
 
-  // ===== scale_count: GPU-resident, no per-call copies =====
   // d_scale_count is zeroed once per traversal by resetScaleCount()
-  // and copied D->H once by syncScaleCount() after the traversal.
+  // and copied D->H once by syncScaleCount() after traversal.
   if (!d_scale_count || d_scale_count_size < (size_t)P) {
     if (d_scale_count)
       cudaFree(d_scale_count);
@@ -164,22 +184,23 @@ void MatrixOpCuBLAS::compositehadamard(const Matrix &A, const Matrix &B,
     d_scale_count_size = P;
   }
 
-  // Use state-specialized fused kernels directly.
-  if (numStates == 4) {
+  if constexpr (K == 4) {
     launchCompositeHadamardFused_DNA4(
         d_A, d_B, d_C, d_D, d_R, d_scale_count, P, SCALING_THRESHOLD,
         SCALING_THRESHOLD_EXP, stream1);
-  } else if (numStates == 20) {
+  } else {
     launchCompositeHadamardFused_AA20(
         d_A, d_B, d_C, d_D, d_R, d_scale_count, P, SCALING_THRESHOLD,
         SCALING_THRESHOLD_EXP, stream1);
-  } else {
-    throw std::invalid_argument(
-        "MatrixOpCuBLAS::compositehadamard only supports numStates 4 or 20");
   }
-  // No D->H copy or sync here -- scale_count stays on GPU until
-  // syncScaleCount()
 }
+
+template void MatrixOpCuBLAS::compositehadamardSpecialized<4>(
+    const Matrix &A, const Matrix &B, const Matrix &C, const Matrix &D,
+    Matrix &R, uint8_t *scale_count);
+template void MatrixOpCuBLAS::compositehadamardSpecialized<20>(
+    const Matrix &A, const Matrix &B, const Matrix &C, const Matrix &D,
+    Matrix &R, uint8_t *scale_count);
 
 void MatrixOpCuBLAS::resetScaleCount(int P) {
   if (!d_scale_count || d_scale_count_size < (size_t)P) {

@@ -19,6 +19,10 @@ public:
   void compositehadamard(const Matrix &A, const Matrix &B, const Matrix &C,
                          const Matrix &D, Matrix &R,
                          uint8_t *scale_count) override;
+  template <int K>
+  void compositehadamardSpecialized(const Matrix &A, const Matrix &B,
+                                    const Matrix &C, const Matrix &D,
+                                    Matrix &R, uint8_t *scale_count);
   void multiplyInPlace(const Matrix &A, const Matrix &B, Matrix &R) override;
 
   // GPU-resident scale_count lifecycle management

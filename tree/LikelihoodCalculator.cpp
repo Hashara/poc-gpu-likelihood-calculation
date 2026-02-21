@@ -196,8 +196,13 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node,
 #else
   node->partialLikelihood = PL1.hadamard(PL2);
 #endif
-#else
+#elif defined(USE_OPENACC)
   P1.compositeHadamard(L1, P2, L2, node->partialLikelihood, scale_count);
+#elif defined(USE_CUBLAS)
+
+    compositeCuBLASHadamard<numStates>(P1, L1, P2, L2, node->partialLikelihood,
+                               scale_count);
+
 #endif
   node->isPartialLikelihoodCalculated = true;
 }
@@ -231,8 +236,24 @@ void LikelihoodCalculator::computeInternalLikelihoodBounded(Node *node,
 #else
   node->partialLikelihood = PL1.hadamard(PL2);
 #endif
-#else
+#elif defined(USE_OPENACC)
   P1.compositeHadamard(L1, P2, L2, node->partialLikelihood, nullptr);
+#elif defined(USE_CUBLAS)
+  int numStates = Params::instance().numStates;
+  switch (numStates) {
+  case 4:
+    compositeCuBLASHadamard<4>(P1, L1, P2, L2, node->partialLikelihood,
+                               nullptr);
+    break;
+  case 20:
+    compositeCuBLASHadamard<20>(P1, L1, P2, L2, node->partialLikelihood,
+                                nullptr);
+    break;
+  default:
+    throw std::invalid_argument(
+        "computeInternalLikelihoodBounded only supports numStates 4 or 20 for "
+        "CUBLAS");
+  }
 #endif
   node->completedPackets.insert(packet_id);
 }
