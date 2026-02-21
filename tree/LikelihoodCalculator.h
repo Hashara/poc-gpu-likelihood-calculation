@@ -17,6 +17,7 @@ class LikelihoodCalculator {
 
 public:
     LikelihoodCalculator(Tree* tree, Alignment* aln, Model* model);
+    ~LikelihoodCalculator();
 
     // Traverse the tree in post-order and compute partial likelihoods
     void traverseAndCompute(Node* node, uint8_t* scale_count);
@@ -81,6 +82,12 @@ private:
     bool isBounded_ = false; // Flag to indicate if bounded computation is used
     int chunk_size_ = 1000; // Default chunk size for bounded computation
     int num_threads_ = 1; // Default number of threads for bounded computation
+#ifdef USE_CUBLAS
+    uint8_t* h_tip8_pinned_ = nullptr;
+    size_t h_tip8_pinned_size_ = 0;
+    int* h_freq_pinned_ = nullptr;
+    size_t h_freq_pinned_size_ = 0;
+#endif
 };
 
 

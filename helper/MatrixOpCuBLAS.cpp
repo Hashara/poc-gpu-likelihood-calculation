@@ -12,6 +12,11 @@ MatrixOpCuBLAS::MatrixOpCuBLAS() {
   cublasCreate(&handle);
   cudaStreamCreate(&stream1);
   cudaStreamCreate(&stream2);
+  cudaEventCreateWithFlags(&stream1_ready_event, cudaEventDisableTiming);
+  cudaEventCreateWithFlags(&d2h_done_event, cudaEventDisableTiming);
+  if (cublasSetStream(handle, stream1) != CUBLAS_STATUS_SUCCESS) {
+    throw std::runtime_error("Failed to bind cuBLAS handle to stream1.");
+  }
 }
 
 MatrixOpCuBLAS::~MatrixOpCuBLAS() {
@@ -27,11 +32,17 @@ MatrixOpCuBLAS::~MatrixOpCuBLAS() {
     cudaFree(d_freq_cache);
   if (d_logL_result)
     cudaFree(d_logL_result);
+  if (h_logL_result_pinned)
+    cudaFreeHost(h_logL_result_pinned);
   // Destroy streams
   if (stream1)
     cudaStreamDestroy(stream1);
   if (stream2)
     cudaStreamDestroy(stream2);
+  if (stream1_ready_event)
+    cudaEventDestroy(stream1_ready_event);
+  if (d2h_done_event)
+    cudaEventDestroy(d2h_done_event);
 }
 
 Matrix MatrixOpCuBLAS::multiply(const Matrix &A, const Matrix &B) {
@@ -213,9 +224,12 @@ void MatrixOpCuBLAS::resetScaleCount(int P) {
 }
 
 void MatrixOpCuBLAS::syncScaleCount(uint8_t *host_ptr, int P) {
+  cudaEventRecord(stream1_ready_event, stream1);
+  cudaStreamWaitEvent(stream2, stream1_ready_event, 0);
   cudaMemcpyAsync(host_ptr, d_scale_count, P * sizeof(uint8_t),
-                  cudaMemcpyDeviceToHost, stream1);
-  cudaStreamSynchronize(stream1);
+                  cudaMemcpyDeviceToHost, stream2);
+  cudaEventRecord(d2h_done_event, stream2);
+  cudaEventSynchronize(d2h_done_event);
 }
 
 void MatrixOpCuBLAS::multiplyInPlace(const Matrix &A, const Matrix &B,
@@ -294,6 +308,12 @@ double MatrixOpCuBLAS::computeLogLikelihood(const Matrix &baseFreq,
   if (!d_logL_result) {
     cudaMalloc(&d_logL_result, sizeof(double));
   }
+  if (!h_logL_result_pinned) {
+    if (cudaMallocHost(&h_logL_result_pinned, sizeof(double)) != cudaSuccess) {
+      throw std::runtime_error(
+          "Failed to allocate pinned host buffer for log-likelihood result.");
+    }
+  }
 
   // --- 4. Single fused kernel: dot product + log + scale + reduction ---
   // Replaces cuBLAS DGEMM + separate reduction kernel.
@@ -305,10 +325,12 @@ double MatrixOpCuBLAS::computeLogLikelihood(const Matrix &baseFreq,
                            log_scaling_threshold, stream1);
 
   // --- 5. Copy single scalar back to host ---
-  double logL = 0.0;
-  cudaMemcpyAsync(&logL, d_logL_result, sizeof(double), cudaMemcpyDeviceToHost,
-                  stream1);
-  cudaStreamSynchronize(stream1);
+  cudaEventRecord(stream1_ready_event, stream1);
+  cudaStreamWaitEvent(stream2, stream1_ready_event, 0);
+  cudaMemcpyAsync(h_logL_result_pinned, d_logL_result, sizeof(double),
+                  cudaMemcpyDeviceToHost, stream2);
+  cudaEventRecord(d2h_done_event, stream2);
+  cudaEventSynchronize(d2h_done_event);
 
-  return logL;
+  return *h_logL_result_pinned;
 }

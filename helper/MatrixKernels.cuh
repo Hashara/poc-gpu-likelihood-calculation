@@ -78,5 +78,11 @@ void launchCompositeHadamardFused_AA20(
         int P, double scaling_threshold, int scaling_exp,
         cudaStream_t stream);
 
+// Build transition matrices directly on device (row-major layout used by
+// existing CUBLAS path in Model::buildTransitionMatrix).
+void launchBuildTransitionMatrixJC(double *d_P, double t, cudaStream_t stream);
+void launchBuildTransitionMatrixPOISSON(double *d_P, double t,
+                                        cudaStream_t stream);
+
 
 #endif // POC_GPU_LIKELIHOOD_CALCULATIONS_MATRIXKERNELS_CUH

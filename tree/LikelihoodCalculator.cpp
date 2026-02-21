@@ -12,6 +12,7 @@
 #ifdef USE_CUBLAS
 #include "../helper/MatrixOpDispatcher.h"
 #include "../helper/TipLikelihoodKernel.cuh"
+#include <cuda_runtime.h>
 #endif
 
 using namespace std;
@@ -27,6 +28,19 @@ LikelihoodCalculator::LikelihoodCalculator(Tree *tree, Alignment *aln,
   tree_ = tree;
   aln_ = aln;
   model_ = model;
+}
+
+LikelihoodCalculator::~LikelihoodCalculator() {
+#ifdef USE_CUBLAS
+  if (h_tip8_pinned_) {
+    cudaFreeHost(h_tip8_pinned_);
+    h_tip8_pinned_ = nullptr;
+  }
+  if (h_freq_pinned_) {
+    cudaFreeHost(h_freq_pinned_);
+    h_freq_pinned_ = nullptr;
+  }
+#endif
 }
 
 /**
@@ -94,11 +108,20 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
   L.allocDevice();              // allocate device memory
   double *d_l = L.deviceData(); // device pointer
 
-  std::vector<uint8_t> tip8(numPatterns);
-
+  if (!h_tip8_pinned_ || h_tip8_pinned_size_ < (size_t)numPatterns) {
+    if (h_tip8_pinned_) {
+      cudaFreeHost(h_tip8_pinned_);
+      h_tip8_pinned_ = nullptr;
+    }
+    if (cudaMallocHost(&h_tip8_pinned_, numPatterns * sizeof(uint8_t)) !=
+        cudaSuccess) {
+      throw std::runtime_error("Failed to allocate pinned host buffer for tip states.");
+    }
+    h_tip8_pinned_size_ = (size_t)numPatterns;
+  }
   for (int p = 0; p < numPatterns; ++p) {
     int s = aln_->patterns[p].states[taxonIndex];
-    tip8[p] = (s < numStates) ? s : (uint8_t)0xFF;
+    h_tip8_pinned_[p] = (s < numStates) ? s : (uint8_t)0xFF;
   }
 
   // OPTIMIZATION: Use cached tip8 buffer to avoid repeated cudaMalloc/cudaFree
@@ -115,7 +138,7 @@ void LikelihoodCalculator::buildTipLikelihood(Node *node) {
   // creating per node
   cudaStream_t stream = getCuBLASStream();
 
-  cudaMemcpyAsync(d_tip8, tip8.data(), numPatterns * sizeof(uint8_t),
+  cudaMemcpyAsync(d_tip8, h_tip8_pinned_, numPatterns * sizeof(uint8_t),
                   cudaMemcpyHostToDevice, stream);
 
   int blockSize = 256; // OPTIMIZATION: Match kernel thread count
@@ -199,9 +222,19 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node,
 #elif defined(USE_OPENACC)
   P1.compositeHadamard(L1, P2, L2, node->partialLikelihood, scale_count);
 #elif defined(USE_CUBLAS)
-
-    compositeCuBLASHadamard<numStates>(P1, L1, P2, L2, node->partialLikelihood,
+  switch (numStates) {
+  case 4:
+    compositeCuBLASHadamard<4>(P1, L1, P2, L2, node->partialLikelihood,
                                scale_count);
+    break;
+  case 20:
+    compositeCuBLASHadamard<20>(P1, L1, P2, L2, node->partialLikelihood,
+                                scale_count);
+    break;
+  default:
+    throw std::invalid_argument(
+        "computeInternalLikelihood only supports numStates 4 or 20 for CUBLAS");
+  }
 
 #endif
   node->isPartialLikelihoodCalculated = true;
@@ -536,9 +569,19 @@ LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
 
 #elif defined(USE_CUBLAS)
   //  Precompute frequencies for GPU reduction kernel
-  int *freqData = new int[numPatterns];
+  if (!h_freq_pinned_ || h_freq_pinned_size_ < (size_t)numPatterns) {
+    if (h_freq_pinned_) {
+      cudaFreeHost(h_freq_pinned_);
+      h_freq_pinned_ = nullptr;
+    }
+    if (cudaMallocHost(&h_freq_pinned_, numPatterns * sizeof(int)) !=
+        cudaSuccess) {
+      throw std::runtime_error("Failed to allocate pinned host buffer for frequencies.");
+    }
+    h_freq_pinned_size_ = (size_t)numPatterns;
+  }
   for (int j = 0; j < numPatterns; ++j) {
-    freqData[j] = aln_->patterns[j].frequency;
+    h_freq_pinned_[j] = aln_->patterns[j].frequency;
   }
 
 #else
@@ -564,9 +607,8 @@ LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
 
 #elif defined(USE_CUBLAS)
   // GPU reduction: DGEMM + log-likelihood sum entirely on device
-  logL = computeCuBLASLogLikelihood(baseFrequencies, rootL, freqData,
+  logL = computeCuBLASLogLikelihood(baseFrequencies, rootL, h_freq_pinned_,
                                     numPatterns, LOG_SCALING_THRESHOLD);
-  delete[] freqData;
 
 #else
   // CPU fallback (no scaling)

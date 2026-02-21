@@ -50,10 +50,13 @@ private:
   int *d_freq_cache = nullptr;
   size_t d_freq_elems = 0;
   double *d_logL_result = nullptr; // single scalar on GPU
+  double *h_logL_result_pinned = nullptr;
 
   // Streams for async execution
   cudaStream_t stream1 = nullptr;
   cudaStream_t stream2 = nullptr;
+  cudaEvent_t stream1_ready_event = nullptr;
+  cudaEvent_t d2h_done_event = nullptr;
 
 public:
   // Expose stream for reuse by LikelihoodCalculator

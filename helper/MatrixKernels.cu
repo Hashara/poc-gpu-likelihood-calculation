@@ -4,6 +4,7 @@
 
 #include "MatrixKernels.cuh"
 #include <cuda_runtime.h>
+#include <cmath>
 
 // Constant memory for values that are fixed for the entire execution
 __constant__ int d_K; // number of states (4 for DNA, 20 for protein)
@@ -649,4 +650,33 @@ void launchCompositeHadamardFused_AA20(
     num_blocks, threads_per_block, smem_size, stream>>>(
             d_A, d_B, d_C, d_D, d_R, d_scale_count,
             sites_per_block, P, scaling_threshold, scaling_exp);
+}
+
+__global__ void build_transition_matrix_jc_kernel(double *p, double e) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= 16)
+    return;
+  int i = idx / 4;
+  int j = idx % 4;
+  p[idx] = (i == j) ? (0.25 + 0.75 * e) : (0.25 - 0.25 * e);
+}
+
+__global__ void build_transition_matrix_poisson_kernel(double *p, double e) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= 400)
+    return;
+  int i = idx / 20;
+  int j = idx % 20;
+  p[idx] = (i == j) ? (0.05 + 0.95 * e) : (0.05 - 0.05 * e);
+}
+
+void launchBuildTransitionMatrixJC(double *d_P, double t, cudaStream_t stream) {
+  const double e = std::exp(-4.0 * t / 3.0);
+  build_transition_matrix_jc_kernel<<<1, 32, 0, stream>>>(d_P, e);
+}
+
+void launchBuildTransitionMatrixPOISSON(double *d_P, double t,
+                                        cudaStream_t stream) {
+  const double e = std::exp(-20.0 * t / 19.0);
+  build_transition_matrix_poisson_kernel<<<2, 256, 0, stream>>>(d_P, e);
 }

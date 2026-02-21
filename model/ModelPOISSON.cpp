@@ -8,6 +8,7 @@
 #include <iostream>
 #if defined(USE_CUBLAS) && defined(USE_CUDA)
 #include "../helper/MatrixOpDispatcher.h"
+#include "../helper/MatrixKernels.cuh"
 #endif
 
 std::string ModelPOISSON::getName() const { return "POISSON"; }
@@ -119,6 +120,13 @@ Matrix ModelPOISSON::getTransitionMatrix(double t) const {
 }
 #if defined(USE_OPENACC) && defined(TRANSPOSED_RATE_MATRIX)
 void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
+#if defined(USE_CUBLAS) && defined(USE_CUDA)
+  // Generate transition matrix directly on device to avoid per-node H2D copy.
+  P.allocDevice();
+  launchBuildTransitionMatrixPOISSON(P.deviceData(), t, getCuBLASStream());
+  return;
+#endif
+
   double e = std::exp(-20.0 * t / 19.0);
   double *p = P.data();
 
@@ -137,6 +145,13 @@ void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
 }
 #else
 void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
+#if defined(USE_CUBLAS) && defined(USE_CUDA)
+  // Generate transition matrix directly on device to avoid per-node H2D copy.
+  P.allocDevice();
+  launchBuildTransitionMatrixPOISSON(P.deviceData(), t, getCuBLASStream());
+  return;
+#endif
+
   double e = std::exp(-20.0 * t / 19.0);
   double *p = P.data();
 
@@ -154,12 +169,6 @@ void ModelPOISSON::buildTransitionMatrix(double t, Matrix &P) const {
   }
 #ifdef USE_OPENACC
 #pragma acc update device(p[0 : 400])
-#elif defined(USE_CUBLAS)
-  // Match OpenACC pattern: upload transition matrix to GPU here
-  // so compositehadamard can use it directly without host-to-device copy
-  P.allocDevice();
-  P.copyHtoDAsync(getCuBLASStream()); // Upload on compute stream — no
-                                      // cross-stream sync needed
 #endif
 }
 #endif
