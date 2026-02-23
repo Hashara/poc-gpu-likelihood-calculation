@@ -21,6 +21,7 @@ public:
     std::string log_file = "output.log";
     SeqType seq_type = SEQ_DNA;
     int numStates = 4;
+    bool useEigenSpace = false; // Use eigendecomposition (IQ-TREE formulation)
 
     static Params& instance() {
         static Params instance;

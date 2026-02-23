@@ -105,6 +105,25 @@ inline void compositeCuBLASHadamard(const Matrix &A, const Matrix &B,
   }
   op->template compositehadamardSpecialized<K>(A, B, C, D, R, scale_count);
 }
+
+// ---- Eigenspace helpers ----
+
+// Upload eigendecomposition data to GPU (call once after model init)
+inline void uploadCuBLASEigenData(const double *eigenvectors,
+                                   const double *eigenvalues,
+                                   const double *inv_eigenvectors,
+                                   int K) {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  if (op) op->uploadEigenData(eigenvectors, eigenvalues, inv_eigenvectors, K);
+}
+
+// Get the singleton MatrixOpCuBLAS pointer for eigenspace methods
+inline MatrixOpCuBLAS* getCuBLASBackend() {
+  static MatrixOpCuBLAS *op =
+      dynamic_cast<MatrixOpCuBLAS *>(getBackend(MatrixOpType::CUBLAS));
+  return op;
+}
 #endif
 
 #endif // USE_EIGEN

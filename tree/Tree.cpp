@@ -4,10 +4,17 @@
 
 #include "Tree.h"
 #include "LikelihoodCalculator.h"
+#include "../Params.h"
 
 double Tree::computeLikelihood(Alignment *aln, Model *model) {
     LikelihoodCalculator calc(this, aln, model);
 //    calc.setIsBounded(true);
+
+    // Enable eigenspace formulation if requested
+    if (Params::instance().useEigenSpace) {
+        calc.setUseEigenSpace(true);
+    }
+
     return calc.computeLogLikelihood();
 }
 

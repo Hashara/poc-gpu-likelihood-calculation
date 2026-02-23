@@ -39,6 +39,9 @@ void parseArgs(int argc, char *argv[]) {
             }
             else throw std::invalid_argument("Unknown sequence type: " + stype);
         }
+        else if (arg == "--eigenspace") {
+            params.useEigenSpace = true;
+        }
         else {
             throw std::invalid_argument("Unknown argument: " + arg);
         }
@@ -118,6 +121,11 @@ int main(int argc, char *argv[]) {
 #ifndef USE_EIGEN
         tree.setMatrixOpType(opType);
 #endif
+        if (params.useEigenSpace) {
+            logInfo("Eigenspace formulation ENABLED (IQ-TREE style).");
+            std::cout << "Eigenspace formulation ENABLED (IQ-TREE style)." << std::endl;
+        }
+
         logInfo("Starting likelihood calculation...");
         cout << "Starting likelihood calculation..." << endl;
 

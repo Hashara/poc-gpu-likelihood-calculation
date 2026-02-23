@@ -35,6 +35,9 @@ ModelPOISSON::ModelPOISSON() {
 
   baseFreq_.fill(0.05); // Equal base frequencies
 
+  // Always compute eigendecomposition for eigenspace formulation
+  computeEigenDecomp();
+
 #ifdef DECOMP
   decomposeRateMatrix();
 
@@ -102,6 +105,9 @@ ModelPOISSON::ModelPOISSON() {
   }
 
   baseFreq_.fill(0.05); // Equal base frequencies
+
+  // Always compute eigendecomposition for eigenspace formulation
+  computeEigenDecomp();
 }
 
 Matrix ModelPOISSON::getTransitionMatrix(double t) const {

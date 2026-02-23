@@ -34,6 +34,12 @@ MatrixOpCuBLAS::~MatrixOpCuBLAS() {
     cudaFree(d_logL_result);
   if (h_logL_result_pinned)
     cudaFreeHost(h_logL_result_pinned);
+  // Free eigenspace buffers
+  if (d_eigenvectors_) cudaFree(d_eigenvectors_);
+  if (d_eigenvalues_) cudaFree(d_eigenvalues_);
+  if (d_inv_evec_) cudaFree(d_inv_evec_);
+  if (d_echild_left_) cudaFree(d_echild_left_);
+  if (d_echild_right_) cudaFree(d_echild_right_);
   // Destroy streams
   if (stream1)
     cudaStreamDestroy(stream1);
@@ -123,7 +129,6 @@ Matrix MatrixOpCuBLAS::hadamard(const Matrix &A, const Matrix &B) {
   cudaMemcpy(d_B, B.data(), bytes, cudaMemcpyHostToDevice);
 
   int blockSize = 256;
-  int gridSize = (size + blockSize - 1) / blockSize;
 
   launchHadamard(d_A, d_B, d_C, size, blockSize);
 
@@ -332,4 +337,124 @@ double MatrixOpCuBLAS::computeLogLikelihood(const Matrix &baseFreq,
   cudaEventSynchronize(d2h_done_event);
 
   return *h_logL_result_pinned;
+}
+
+// =========================================================================
+// Eigenspace methods
+// =========================================================================
+
+void MatrixOpCuBLAS::uploadEigenData(const double *eigenvectors,
+                                      const double *eigenvalues,
+                                      const double *inv_eigenvectors,
+                                      int K) {
+  eigen_K_ = K;
+  size_t mat_bytes = K * K * sizeof(double);
+  size_t vec_bytes = K * sizeof(double);
+
+  // Allocate device buffers
+  if (d_eigenvectors_) cudaFree(d_eigenvectors_);
+  if (d_eigenvalues_) cudaFree(d_eigenvalues_);
+  if (d_inv_evec_) cudaFree(d_inv_evec_);
+  if (d_echild_left_) cudaFree(d_echild_left_);
+  if (d_echild_right_) cudaFree(d_echild_right_);
+
+  cudaMalloc(&d_eigenvectors_, mat_bytes);
+  cudaMalloc(&d_eigenvalues_, vec_bytes);
+  cudaMalloc(&d_inv_evec_, mat_bytes);
+  cudaMalloc(&d_echild_left_, mat_bytes);
+  cudaMalloc(&d_echild_right_, mat_bytes);
+
+  // Upload constant data
+  cudaMemcpyAsync(d_eigenvectors_, eigenvectors, mat_bytes,
+                  cudaMemcpyHostToDevice, stream1);
+  cudaMemcpyAsync(d_eigenvalues_, eigenvalues, vec_bytes,
+                  cudaMemcpyHostToDevice, stream1);
+  cudaMemcpyAsync(d_inv_evec_, inv_eigenvectors, mat_bytes,
+                  cudaMemcpyHostToDevice, stream1);
+}
+
+void MatrixOpCuBLAS::buildEChildrenGPU(double t, double *d_echildren) {
+  launchBuildEChildren(d_eigenvectors_, d_eigenvalues_, d_echildren,
+                       eigen_K_, t, stream1);
+}
+
+void MatrixOpCuBLAS::eigenCompositeHadamard(
+    const double *d_echild_left,
+    const Matrix &L_left,
+    const double *d_echild_right,
+    const Matrix &L_right,
+    Matrix &R)
+{
+  int K = eigen_K_;
+  int P = (int)L_left.cols();
+
+  R.resize(K, P);
+  R.allocDevice();
+
+  // Ensure scale_count is allocated
+  if (!d_scale_count || d_scale_count_size < (size_t)P) {
+    if (d_scale_count) cudaFree(d_scale_count);
+    cudaMalloc(&d_scale_count, P * sizeof(uint8_t));
+    d_scale_count_size = P;
+  }
+
+  // L_left and L_right are already device-resident (from previous compositeHadamard
+  // or buildTipLikelihood). R is also device-allocated.
+  launchEigenPartialLikelihood(
+      d_echild_left,
+      L_left.deviceData(),
+      d_echild_right,
+      L_right.deviceData(),
+      d_inv_evec_,
+      R.deviceData(),
+      d_scale_count,
+      K, P,
+      SCALING_THRESHOLD,
+      SCALING_THRESHOLD_EXP,
+      stream1
+  );
+}
+
+void MatrixOpCuBLAS::transformToEigenSpace(Matrix &L) {
+  // L_out = U⁻¹ · L_in   (K×K) * (K×P) = (K×P)
+  int K = eigen_K_;
+  int P = (int)L.cols();
+
+  // Allocate temp buffer for result
+  double *d_temp = nullptr;
+  cudaMalloc(&d_temp, K * P * sizeof(double));
+
+  double alpha = 1.0, beta = 0.0;
+  cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+              K, P, K, &alpha,
+              d_inv_evec_, K,
+              L.deviceData(), K, &beta,
+              d_temp, K);
+
+  // Copy result back to L's device buffer
+  cudaMemcpyAsync(L.deviceData(), d_temp, K * P * sizeof(double),
+                   cudaMemcpyDeviceToDevice, stream1);
+  cudaFree(d_temp);
+}
+
+void MatrixOpCuBLAS::transformFromEigenSpace(Matrix &L) {
+  // L_out = U · L_in   (K×K) * (K×P) = (K×P)
+  int K = eigen_K_;
+  int P = (int)L.cols();
+
+  // Allocate temp buffer for result
+  double *d_temp = nullptr;
+  cudaMalloc(&d_temp, K * P * sizeof(double));
+
+  double alpha = 1.0, beta = 0.0;
+  cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+              K, P, K, &alpha,
+              d_eigenvectors_, K,
+              L.deviceData(), K, &beta,
+              d_temp, K);
+
+  // Copy result back to L's device buffer
+  cudaMemcpyAsync(L.deviceData(), d_temp, K * P * sizeof(double),
+                   cudaMemcpyDeviceToDevice, stream1);
+  cudaFree(d_temp);
 }

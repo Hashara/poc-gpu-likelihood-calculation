@@ -39,6 +39,13 @@ public:
     // Compute partial likelihood for an internal node using matrix ops
     void computeInternalLikelihood(Node* node, uint8_t* scale_count);
 
+    // Compute partial likelihood using eigenspace formulation (IQ-TREE style).
+    // Children store L̃ = U⁻¹·L (eigenspace basis). At each node:
+    //   1. E·L̃ converts to original basis (= P(t)·L)
+    //   2. Hadamard in original basis
+    //   3. U⁻¹·product converts back to eigenspace for storage
+    void computeInternalLikelihoodEigen(Node* node, uint8_t* scale_count);
+
     void computeInternalLikelihoodBounded(Node* node, int packet_id);
 
     // Compute the overall log-likelihood of the tree
@@ -80,6 +87,7 @@ private:
     Model* model_;
     int numStates_;
     bool isBounded_ = false; // Flag to indicate if bounded computation is used
+    bool useEigenSpace_ = false; // Use eigendecomposition instead of P(t)
     int chunk_size_ = 1000; // Default chunk size for bounded computation
     int num_threads_ = 1; // Default number of threads for bounded computation
 #ifdef USE_CUBLAS
@@ -87,7 +95,10 @@ private:
     size_t h_tip8_pinned_size_ = 0;
     int* h_freq_pinned_ = nullptr;
     size_t h_freq_pinned_size_ = 0;
+    bool eigenDataUploaded_ = false;
 #endif
+public:
+    void setUseEigenSpace(bool use) { useEigenSpace_ = use; }
 };
 
 

@@ -33,6 +33,39 @@ public:
   double computeLogLikelihood(const Matrix &baseFreq, const Matrix &rootL,
                               const int *freq, int numPatterns,
                               double log_scaling_threshold);
+
+  // ---- Eigenspace partial likelihood (IQ-TREE formulation) ----
+
+  // Eigenspace partial likelihood:
+  //   L_dad = inv_evec * ((E_left * L_left) ⊙ (E_right * L_right))
+  void eigenCompositeHadamard(
+      const double *d_echild_left,   // [K*K] device ptr
+      const Matrix &L_left,          // [K*P] left child (device-resident)
+      const double *d_echild_right,  // [K*K] device ptr
+      const Matrix &L_right,         // [K*P] right child (device-resident)
+      Matrix &R                      // [K*P] output (device-allocated)
+  );
+
+  // Upload eigendecomposition data to GPU (call once after model init)
+  void uploadEigenData(const double *eigenvectors, const double *eigenvalues,
+                       const double *inv_eigenvectors, int K);
+
+  // Build echildren matrix on GPU for a given branch length
+  void buildEChildrenGPU(double t, double *d_echildren);
+
+  // Transform partial likelihoods between original and eigenspace bases
+  // L_out = U⁻¹ · L_in  (original → eigenspace)
+  void transformToEigenSpace(Matrix &L);
+  // L_out = U · L_in  (eigenspace → original)
+  void transformFromEigenSpace(Matrix &L);
+
+  // Get device pointers
+  double* getDeviceInvEvec() const { return d_inv_evec_; }
+  double* getDeviceEigenvectors() const { return d_eigenvectors_; }
+  double* getDeviceEigenvalues() const { return d_eigenvalues_; }
+  double* getDeviceEChildLeft() const { return d_echild_left_; }
+  double* getDeviceEChildRight() const { return d_echild_right_; }
+  int getEigenK() const { return eigen_K_; }
 #endif // USE_CUBLAS
 private:
   cublasHandle_t handle;
@@ -51,6 +84,14 @@ private:
   size_t d_freq_elems = 0;
   double *d_logL_result = nullptr; // single scalar on GPU
   double *h_logL_result_pinned = nullptr;
+
+  // Eigenspace buffers (allocated once, reused for all branches)
+  double *d_eigenvectors_ = nullptr;   // [K*K] U
+  double *d_eigenvalues_ = nullptr;    // [K]   λ
+  double *d_inv_evec_ = nullptr;       // [K*K] U⁻¹
+  double *d_echild_left_ = nullptr;    // [K*K] working buffer
+  double *d_echild_right_ = nullptr;   // [K*K] working buffer
+  int eigen_K_ = 0;
 
   // Streams for async execution
   cudaStream_t stream1 = nullptr;

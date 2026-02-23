@@ -34,6 +34,9 @@ ModelJC::ModelJC() {
 
   baseFreq_.fill(.25); // Equal base frequencies
 
+  // Always compute eigendecomposition for eigenspace formulation
+  computeEigenDecomp();
+
 #ifdef DECOMP
   decomposeRateMatrix();
 #endif
@@ -105,6 +108,9 @@ ModelJC::ModelJC() {
   }
 
   baseFreq_.fill(.25); // Equal base frequencies
+
+  // Always compute eigendecomposition for eigenspace formulation
+  computeEigenDecomp();
 }
 
 // t is branch length

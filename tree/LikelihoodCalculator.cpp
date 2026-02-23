@@ -12,6 +12,7 @@
 #ifdef USE_CUBLAS
 #include "../helper/MatrixOpDispatcher.h"
 #include "../helper/TipLikelihoodKernel.cuh"
+#include "../helper/MatrixKernels.cuh"
 #include <cuda_runtime.h>
 #endif
 
@@ -193,6 +194,13 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node,
                                                      uint8_t *scale_count) {
   if (node->isLeaf())
     return;
+
+  // Dispatch to eigenspace if enabled
+  if (useEigenSpace_) {
+    computeInternalLikelihoodEigen(node, scale_count);
+    return;
+  }
+
   int numStates = Params::instance().numStates;
 
   Node *left = node->children[0];
@@ -238,6 +246,111 @@ void LikelihoodCalculator::computeInternalLikelihood(Node *node,
   }
 
 #endif
+  node->isPartialLikelihoodCalculated = true;
+}
+
+/**
+ * Compute partial likelihood using eigenspace formulation (IQ-TREE style).
+ *
+ * Instead of computing P(t) = full transition matrix, we use:
+ *   P(t) = U · diag(exp(λ·t)) · U⁻¹
+ *
+ * Split into:
+ *   echildren(t) = U · diag(exp(λ·t))     (per branch)
+ *   inv_evec = U⁻¹                         (constant)
+ *
+ * At each internal node:
+ *   L_dad = inv_evec * ((E_left * L_left) ⊙ (E_right * L_right))
+ *
+ * @param node Internal node to compute
+ * @param scale_count Per-site scaling counter
+ */
+void LikelihoodCalculator::computeInternalLikelihoodEigen(Node *node,
+                                                           uint8_t *scale_count) {
+  if (node->isLeaf()) return;
+
+  int numStates = Params::instance().numStates;
+  Node *left = node->children[0];
+  Node *right = node->children[1];
+
+  const Matrix &L1 = left->partialLikelihood;
+  const Matrix &L2 = right->partialLikelihood;
+
+#if defined(USE_CUBLAS)
+  // ===== GPU eigenspace path =====
+  MatrixOpCuBLAS *cublas = getCuBLASBackend();
+  cudaStream_t stream = getCuBLASStream();
+
+  // Upload eigendecomposition data to GPU once
+  if (!eigenDataUploaded_) {
+    cublas->uploadEigenData(
+        model_->getEigenvectorsFlat(),
+        model_->getEigenvaluesFlat(),
+        model_->getInvEigenvectorsFlat(),
+        numStates);
+    eigenDataUploaded_ = true;
+  }
+
+  // Build echildren on GPU for each branch
+  launchBuildEChildren(
+      cublas->getDeviceEigenvectors(),
+      cublas->getDeviceEigenvalues(),
+      cublas->getDeviceEChildLeft(),
+      numStates, left->branchLength, stream);
+
+  launchBuildEChildren(
+      cublas->getDeviceEigenvectors(),
+      cublas->getDeviceEigenvalues(),
+      cublas->getDeviceEChildRight(),
+      numStates, right->branchLength, stream);
+
+  // Launch the eigenspace composite Hadamard kernel:
+  // L_dad = inv_evec * ((E_left * L_left) ⊙ (E_right * L_right))
+  cublas->eigenCompositeHadamard(
+      cublas->getDeviceEChildLeft(), L1,
+      cublas->getDeviceEChildRight(), L2,
+      node->partialLikelihood);
+
+#else
+  // ===== CPU eigenspace path =====
+  int K = numStates;
+  int P = (int)L1.cols();
+
+  // Build echildren matrices on CPU
+  static Matrix E_left, E_right;
+  model_->buildEChildren(left->branchLength, E_left);
+  model_->buildEChildren(right->branchLength, E_right);
+
+  // E * L̃ converts eigenspace-basis partials to original basis (= P(t) * L)
+  Matrix EL1 = E_left * L1;   // K × P (original basis)
+  Matrix EL2 = E_right * L2;  // K × P (original basis)
+
+  // Hadamard product in original basis (valid Felsenstein pruning step)
+#ifdef USE_EIGEN
+  Matrix eigen_product = hadamard(EL1, EL2);
+#else
+  Matrix eigen_product = EL1.hadamard(EL2);
+#endif
+
+  // Transform back to eigenspace: L̃_dad = U⁻¹ · product
+  const double *inv = model_->getInvEigenvectorsFlat();
+  node->partialLikelihood.resize(K, P);
+  double *result = node->partialLikelihood.data();
+  const double *ep = eigen_product.data();
+
+  for (int ptn = 0; ptn < P; ++ptn) {
+    for (int s = 0; s < K; ++s) {
+      double sum = 0.0;
+      for (int x = 0; x < K; ++x) {
+        // inv_evec(s,x) = inv[x*K + s] (column-major)
+        // eigen_product(x, ptn) = ep[ptn*K + x] (column-major)
+        sum += inv[x * K + s] * ep[ptn * K + x];
+      }
+      result[ptn * K + s] = sum;
+    }
+  }
+#endif
+
   node->isPartialLikelihoodCalculated = true;
 }
 
@@ -344,6 +457,50 @@ void LikelihoodCalculator::traverseAndCompute(Node *root,
     }
   }
 
+  // Phase 1b: If eigenspace mode, transform tip likelihoods into eigenspace
+  //   L̃_tip = U⁻¹ · L_tip
+  // All subsequent internal node computations expect eigenspace-basis inputs.
+  if (useEigenSpace_) {
+    int K = model_->getNumStates();
+#if defined(USE_CUBLAS)
+    MatrixOpCuBLAS *cublas = getCuBLASBackend();
+    if (!eigenDataUploaded_) {
+      cublas->uploadEigenData(
+          model_->getEigenvectorsFlat(),
+          model_->getEigenvaluesFlat(),
+          model_->getInvEigenvectorsFlat(),
+          K);
+      eigenDataUploaded_ = true;
+    }
+    for (Node *n : post) {
+      if (n->isLeaf()) {
+        cublas->transformToEigenSpace(n->partialLikelihood);
+      }
+    }
+#else
+    const double *inv = model_->getInvEigenvectorsFlat();
+    for (Node *n : post) {
+      if (!n->isLeaf()) continue;
+      Matrix &L = n->partialLikelihood;
+      int P = (int)L.cols();
+      Matrix Ltrans(K, P);
+      double *dst = Ltrans.data();
+      const double *src = L.data();
+      for (int ptn = 0; ptn < P; ++ptn) {
+        for (int s = 0; s < K; ++s) {
+          double sum = 0.0;
+          for (int x = 0; x < K; ++x) {
+            // inv_evec(s,x) = inv[x*K + s] (column-major)
+            sum += inv[x * K + s] * src[ptn * K + x];
+          }
+          dst[ptn * K + s] = sum;
+        }
+      }
+      L = Ltrans;
+    }
+#endif
+  }
+
 #ifdef USE_OPENACC
 #pragma acc wait(1)
 #endif
@@ -429,6 +586,33 @@ double LikelihoodCalculator::computeLogLikelihood() {
 
     traverseAndCompute(tree_->root, scale_count);
     Matrix &rootL = tree_->root->partialLikelihood;
+
+    // If eigenspace mode, root partial likelihoods are in eigenspace basis.
+    // Transform back to original basis: L_root = U · L̃_root
+    if (useEigenSpace_) {
+#if defined(USE_CUBLAS)
+      MatrixOpCuBLAS *cublas = getCuBLASBackend();
+      cublas->transformFromEigenSpace(rootL);
+#else
+      int K = model_->getNumStates();
+      int P = (int)rootL.cols();
+      const double *U = model_->getEigenvectorsFlat();
+      Matrix Loriginal(K, P);
+      double *dst = Loriginal.data();
+      const double *src = rootL.data();
+      for (int ptn = 0; ptn < P; ++ptn) {
+        for (int s = 0; s < K; ++s) {
+          double sum = 0.0;
+          for (int x = 0; x < K; ++x) {
+            // U(s,x) = U[x*K + s] (column-major)
+            sum += U[x * K + s] * src[ptn * K + x];
+          }
+          dst[ptn * K + s] = sum;
+        }
+      }
+      rootL = Loriginal;
+#endif
+    }
 
     logL = computeSiteLikelihoodFromRoot(rootL, scale_count);
   }
@@ -547,7 +731,9 @@ double
 LikelihoodCalculator::computeSiteLikelihoodFromRoot(const Matrix &rootL,
                                                     uint8_t *scale_count) {
   double logL = 0.0;
+#if !defined(USE_CUBLAS)
   constexpr double kMinSiteLikelihood = 1.0e-300;
+#endif
 
 #ifdef VERBOSE
   cout << "Root partial likelihood matrix:\n";

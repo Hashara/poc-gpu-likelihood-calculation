@@ -5,6 +5,7 @@
 #include "MatrixKernels.cuh"
 #include <cuda_runtime.h>
 #include <cmath>
+#include <cstdio>
 
 // Constant memory for values that are fixed for the entire execution
 __constant__ int d_K; // number of states (4 for DNA, 20 for protein)
@@ -682,4 +683,289 @@ void launchBuildTransitionMatrixPOISSON(double *d_P, double t,
                                         cudaStream_t stream) {
   const double e = std::exp(-20.0 * t / 19.0);
   build_transition_matrix_poisson_kernel<<<2, 256, 0, stream>>>(d_P, e);
+}
+
+
+// =========================================================================
+// Eigenspace Partial Likelihood Kernel
+// =========================================================================
+//
+// Fused kernel: L_dad = inv_evec * ((echild_left * L_left) ⊙ (echild_right * L_right))
+//
+// Thread mapping (same as composite_hadamard_fused_kernel):
+//   tid / K = local site index
+//   tid % K = state index
+//
+// Children store partial likelihoods in eigenspace basis (L̃ = U⁻¹·L).
+// For each pattern:
+//   Step 1: tmp_left[x]  = dot(E_left[x,:], L̃_left[ptn,:])    (eigenspace → original)
+//   Step 2: tmp_right[x] = dot(E_right[x,:], L̃_right[ptn,:])  (eigenspace → original)
+//   Step 3: product[x]   = tmp_left[x] * tmp_right[x]          (Hadamard in original basis)
+//   Step 4: L̃_dad[ptn,s] = dot(inv_evec[s,:], product[:])      (original → eigenspace)
+//   Step 5: scaling check + write
+
+template <int K>
+__global__ void eigen_partial_likelihood_kernel(
+    const double *__restrict__ echild_left,    // [K * K] column-major
+    const double *__restrict__ partial_lh_left, // [K * P] site-major
+    const double *__restrict__ echild_right,   // [K * K] column-major
+    const double *__restrict__ partial_lh_right,// [K * P] site-major
+    const double *__restrict__ inv_evec,       // [K * K] column-major
+    double       *__restrict__ partial_lh_dad, // [K * P] output
+    uint8_t      *__restrict__ scale_count,    // [P] accumulated
+    int sites_per_block,
+    int P,
+    double scaling_threshold,
+    int scaling_exp)
+{
+    int tid = threadIdx.x;
+    int local_site = tid / K;
+    int state_i = tid % K;
+    int global_ptn = blockIdx.x * sites_per_block + local_site;
+    bool active = (global_ptn < P && local_site < sites_per_block);
+
+    double val = 0.0;
+
+    if constexpr (K <= 4) {
+        // =====================================================================
+        // K=4 (DNA) — register-cached matrices, warp-shuffle for back-transform
+        // =====================================================================
+        double el_row[K], er_row[K], inv_row[K];
+
+        // Load row state_i of each matrix
+        #pragma unroll
+        for (int k = 0; k < K; ++k) {
+            el_row[k] = __ldg(&echild_left[k * K + state_i]);   // col-major: E(state_i, k)
+            er_row[k] = __ldg(&echild_right[k * K + state_i]);
+        }
+
+        if (active) {
+            // Step 1: dot(echild_left[state_i,:], L_left[ptn,:])
+            double s_left = 0.0;
+            #pragma unroll
+            for (int k = 0; k < K; k += 2) {
+                double2 lv = *reinterpret_cast<const double2*>(&partial_lh_left[global_ptn * K + k]);
+                s_left += el_row[k] * lv.x + el_row[k+1] * lv.y;
+            }
+
+            // Step 2: dot(echild_right[state_i,:], L_right[ptn,:])
+            double s_right = 0.0;
+            #pragma unroll
+            for (int k = 0; k < K; k += 2) {
+                double2 rv = *reinterpret_cast<const double2*>(&partial_lh_right[global_ptn * K + k]);
+                s_right += er_row[k] * rv.x + er_row[k+1] * rv.y;
+            }
+
+            // Step 3: Hadamard in eigenspace
+            double eigen_val = s_left * s_right;
+
+            // Step 4: Back-transform via inv_evec
+            #pragma unroll
+            for (int k = 0; k < K; ++k) {
+                inv_row[k] = __ldg(&inv_evec[k * K + state_i]); // col-major: inv_evec(state_i, k)
+            }
+
+            // Gather eigen_val from all K threads of this site via warp shuffle
+            int lane = threadIdx.x % 32;
+            int group_start = (lane / K) * K;
+
+            val = 0.0;
+            #pragma unroll
+            for (int k = 0; k < K; ++k) {
+                double other_eigen = __shfl_sync(0xFFFFFFFF, eigen_val, group_start + k);
+                val += inv_row[k] * other_eigen;
+            }
+        }
+    } else {
+        // =====================================================================
+        // K>4 (e.g. K=20 for protein) — shared memory
+        // =====================================================================
+        extern __shared__ double smem[];
+        double *s_el = smem;                         // K*K
+        double *s_er = smem + K * K;                 // K*K
+        double *s_inv = smem + 2 * K * K;            // K*K
+        double *s_eigen = smem + 3 * K * K;          // sites_per_block * K
+
+        int threads_per_block = blockDim.x;
+
+        // Cooperatively load all three matrices
+        #pragma unroll 4
+        for (int idx = tid; idx < K * K; idx += threads_per_block) {
+            s_el[idx] = __ldg(&echild_left[idx]);
+            s_er[idx] = __ldg(&echild_right[idx]);
+            s_inv[idx] = __ldg(&inv_evec[idx]);
+        }
+        __syncthreads();
+
+        if (active) {
+            // Step 1: dot(echild_left[state_i,:], L_left[ptn,:])
+            double s_left = 0.0;
+            #pragma unroll
+            for (int k = 0; k < K; ++k) {
+                s_left += s_el[k * K + state_i] * __ldg(&partial_lh_left[global_ptn * K + k]);
+            }
+
+            // Step 2: dot(echild_right[state_i,:], L_right[ptn,:])
+            double s_right = 0.0;
+            #pragma unroll
+            for (int k = 0; k < K; ++k) {
+                s_right += s_er[k * K + state_i] * __ldg(&partial_lh_right[global_ptn * K + k]);
+            }
+
+            // Step 3: Hadamard in eigenspace → store to shared
+            s_eigen[local_site * K + state_i] = s_left * s_right;
+        }
+        __syncthreads();
+
+        if (active) {
+            // Step 4: Back-transform using inv_evec
+            val = 0.0;
+            #pragma unroll
+            for (int k = 0; k < K; ++k) {
+                val += s_inv[k * K + state_i] * s_eigen[local_site * K + k];
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Per-site max-abs reduction + scaling (same as original kernel)
+    // -----------------------------------------------------------------------
+    double max_abs;
+
+    if constexpr ((32 % K) == 0) {
+        // WARP-SHUFFLE PATH
+        int lane = threadIdx.x % 32;
+        int group_start = (lane / K) * K;
+        unsigned group_mask = (((unsigned)1 << K) - 1) << group_start;
+
+        double my_abs = fabs(val);
+        #pragma unroll
+        for (int stride = 16; stride >= 1; stride >>= 1) {
+            if (stride < K) {
+                double other = __shfl_down_sync(group_mask, my_abs, stride);
+                my_abs = fmax(my_abs, other);
+            }
+        }
+        max_abs = __shfl_sync(group_mask, my_abs, group_start);
+    } else {
+        // SHARED-MEMORY PATH
+        extern __shared__ double smem2[];
+        double *s_reduce = smem2 + 3 * K * K + ((K > 4) ? blockDim.x / K * K : 0);
+
+        s_reduce[tid] = fabs(val);
+        __syncthreads();
+
+        int site_base = local_site * K;
+        #pragma unroll
+        for (int stride = K / 2; stride > 0; stride >>= 1) {
+            if (state_i < stride) {
+                s_reduce[site_base + state_i] = fmax(s_reduce[site_base + state_i],
+                                                      s_reduce[site_base + state_i + stride]);
+            }
+            __syncthreads();
+        }
+        if constexpr ((K & 1) != 0) {
+            if (state_i == 0 && K > 1) {
+                s_reduce[site_base] = fmax(s_reduce[site_base], s_reduce[site_base + K - 1]);
+            }
+            __syncthreads();
+        }
+        max_abs = s_reduce[site_base];
+    }
+
+    // Write output + scale if needed
+    if (active) {
+        if (max_abs < scaling_threshold && max_abs > 0.0) {
+            val = scalbn(val, scaling_exp);
+            if (state_i == 0) scale_count[global_ptn] += 1;
+        }
+        partial_lh_dad[global_ptn * K + state_i] = val;
+    }
+}
+
+
+void launchEigenPartialLikelihood(
+    const double *d_echild_left,
+    const double *d_partial_lh_left,
+    const double *d_echild_right,
+    const double *d_partial_lh_right,
+    const double *d_inv_evec,
+    double       *d_partial_lh_dad,
+    uint8_t      *d_scale_count,
+    int           K,
+    int           P,
+    double        scaling_threshold,
+    int           scaling_exp,
+    cudaStream_t  stream)
+{
+    int target_threads = 256;
+    int sites_per_block = target_threads / K;
+    if (sites_per_block < 1) sites_per_block = 1;
+
+    int threads_per_block = sites_per_block * K;
+    int num_blocks = (P + sites_per_block - 1) / sites_per_block;
+
+    // Shared memory: K>4 needs 3 matrices + eigen workspace + reduction
+    size_t smem_size = 0;
+    if (K > 4) {
+        smem_size = (3 * K * K + sites_per_block * K) * sizeof(double);
+    }
+    if ((32 % K) != 0) {
+        smem_size += threads_per_block * sizeof(double);
+    }
+
+    switch (K) {
+    case 4:
+        eigen_partial_likelihood_kernel<4>
+            <<<num_blocks, threads_per_block, smem_size, stream>>>(
+                d_echild_left, d_partial_lh_left,
+                d_echild_right, d_partial_lh_right,
+                d_inv_evec, d_partial_lh_dad, d_scale_count,
+                sites_per_block, P, scaling_threshold, scaling_exp);
+        break;
+    case 20:
+        eigen_partial_likelihood_kernel<20>
+            <<<num_blocks, threads_per_block, smem_size, stream>>>(
+                d_echild_left, d_partial_lh_left,
+                d_echild_right, d_partial_lh_right,
+                d_inv_evec, d_partial_lh_dad, d_scale_count,
+                sites_per_block, P, scaling_threshold, scaling_exp);
+        break;
+    default:
+        printf("Eigen kernel: unsupported K=%d\n", K);
+        break;
+    }
+}
+
+
+// =========================================================================
+// Build echildren on GPU: E[i,j] = U[i,j] * exp(eigenval[j] * t)
+// =========================================================================
+__global__ void build_echildren_kernel(
+    const double *__restrict__ U,           // [K*K] column-major eigenvectors
+    const double *__restrict__ eigenvals,   // [K] eigenvalues
+    double       *__restrict__ E,           // [K*K] output column-major
+    int K, double t)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= K * K) return;
+
+    int col = idx / K;   // column index (eigenvalue index)
+    // E[idx] = U[idx] * exp(eigenvals[col] * t)
+    E[idx] = U[idx] * exp(__ldg(&eigenvals[col]) * t);
+}
+
+void launchBuildEChildren(
+    const double *d_eigenvectors,
+    const double *d_eigenvalues,
+    double       *d_echildren,
+    int           K,
+    double        t,
+    cudaStream_t  stream)
+{
+    int total = K * K;
+    int threads = 256;
+    int blocks = (total + threads - 1) / threads;
+    build_echildren_kernel<<<blocks, threads, 0, stream>>>(
+        d_eigenvectors, d_eigenvalues, d_echildren, K, t);
 }
